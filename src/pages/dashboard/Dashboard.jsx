@@ -177,10 +177,10 @@ export default function Dashboard() {
       </div>
 
       {/* Admin Daily & Overall Expenditure Report Panel with Single Unified Filter */}
-      <DailyExpenditureReport />
+      {!isSiteSupervisor() && <DailyExpenditureReport />}
 
       {/* Middle Row: Donut Chart & Gantt Schedule Timeline */}
-      <div style={{
+      {!isSiteSupervisor() && <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(min(400px, 100%), 1fr))',
         gap: '20px'
@@ -196,7 +196,7 @@ export default function Dashboard() {
           <h3 style={{ marginBottom: '16px' }}>Project Schedule Timeline</h3>
           <GanttTimelineChart projects={ganttProjects} />
         </Card>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -7,14 +7,15 @@ import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { 
-  Building2, Calendar, IndianRupee, Users, ShoppingBag, 
-  Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download, 
+import {
+  Building2, Calendar, IndianRupee, Users, ShoppingBag,
+  Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download,
   Plus, AlertCircle, CheckCircle, Clock, Upload, Trash2, Edit3, MapPin,
-  Search, Check, Filter, X
+  Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
+import ScheduleTab from '../../components/projects/ScheduleTab';
 
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
@@ -40,7 +41,7 @@ export default function ProjectDetail() {
   const [labourSummaryTotals, setLabourSummaryTotals] = useState(null);
   const [attendanceSubTab, setAttendanceSubTab] = useState('daily');
   const [paymentSummaryDate, setPaymentSummaryDate] = useState(dayjs().format('YYYY-MM-DD'));
-  
+
   const [workersList, setWorkersList] = useState([]);
   const [workerSearchQuery, setWorkerSearchQuery] = useState('');
   const [globalWorkerResults, setGlobalWorkerResults] = useState([]);
@@ -52,10 +53,14 @@ export default function ProjectDetail() {
 
   const [purchases, setPurchases] = useState([]);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
-  const [purchaseForm, setPurchaseForm] = useState({ category: 'Cement', description: '', amount: '' });
+  const [purchaseForm, setPurchaseForm] = useState({ category: 'Cement', description: '', amount: '', isMaterialPurchase: false, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
   const [purchaseFile, setPurchaseFile] = useState(null);
 
   const [pettyCash, setPettyCash] = useState(null);
+  const [ledgerTransactions, setLedgerTransactions] = useState([]);
+  const [ledgerFilter, setLedgerFilter] = useState('all');
+  const [ledgerDate, setLedgerDate] = useState('');
+  const [isPettyCashLoading, setIsPettyCashLoading] = useState(false);
   const [refillRequests, setRefillRequests] = useState([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ category: 'fuel', customCategoryName: '', description: '', amount: '' });
@@ -66,15 +71,29 @@ export default function ProjectDetail() {
   const [openingBalanceForm, setOpeningBalanceForm] = useState('');
   const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
 
-  const [materials, setMaterials] = useState({ items: [], grandTotal: 0 });
+  const [materials, setMaterials] = useState(null);
+  const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
-  const [materialForm, setMaterialForm] = useState({ itemName: '', unit: 'bags', quantity: '', totalValue: '', remarks: '' });
+  const [materialForm, setMaterialForm] = useState({ itemName: '', unit: 'bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
+  const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
+  const [selectedUsageItem, setSelectedUsageItem] = useState(null);
+  const [usageFormData, setUsageFormData] = useState({ quantity: '', reason: '', date: dayjs().format('YYYY-MM-DD') });
+  const [isSubmittingUsage, setIsSubmittingUsage] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
 
   const [execution, setExecution] = useState(null);
+  const [executionTools, setExecutionTools] = useState([]);
   const [toolNameInput, setToolNameInput] = useState('');
   const [toolQtyInput, setToolQtyInput] = useState(1);
 
   const [closure, setClosure] = useState(null);
+  const [isStartingClosure, setIsStartingClosure] = useState(false);
+  const [isSavingClosure, setIsSavingClosure] = useState(false);
+  const [wastePhotosFiles, setWastePhotosFiles] = useState([]);
+  const [rentedToolPhotoFile, setRentedToolPhotoFile] = useState(null);
+  const [sitePhotosFiles, setSitePhotosFiles] = useState([]);
+  const [labourPaymentFile, setLabourPaymentFile] = useState(null);
 
   useEffect(() => {
     loadProjectData();
@@ -115,6 +134,10 @@ export default function ProjectDetail() {
     }
   }, [attendanceSubTab, paymentSummaryDate]);
 
+  useEffect(() => {
+    if (activeTab === 'pettycash') loadPettyCash();
+  }, [ledgerFilter, ledgerDate]);
+
   // Live master worker search with debounce
   useEffect(() => {
     if (!workerSearchQuery || !workerSearchQuery.trim()) {
@@ -154,7 +177,7 @@ export default function ProjectDetail() {
     try {
       const targetDate = attendanceDate;
       const dateParam = paymentSummaryDate === 'all' ? 'all' : paymentSummaryDate;
-      
+
       const [attRes, workRes, labRes] = await Promise.all([
         api.get(`/projects/${projectId}/attendance?date=${targetDate}`),
         api.get(`/workers?projectId=${projectId}`),
@@ -185,12 +208,12 @@ export default function ProjectDetail() {
       ...prev,
       entries: [
         ...prev.entries,
-        { 
-          worker, 
-          timeIn: '09:00', 
-          timeOut: '18:00', 
-          dutyType: 'full_day', 
-          dutyHours: 8, 
+        {
+          worker,
+          timeIn: '09:00',
+          timeOut: '18:00',
+          dutyType: 'full_day',
+          dutyHours: 8,
           remarks: '',
           isPaid: false,
           amountPaid: 0
@@ -242,7 +265,7 @@ export default function ProjectDetail() {
     try {
       const res = await api.post('/workers', { ...newWorkerForm, projectId });
       const worker = res.data.data;
-      
+
       setIsWorkerModalOpen(false);
       setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
       setWorkerSearchQuery('');
@@ -301,12 +324,19 @@ export default function ProjectDetail() {
     formData.append('category', purchaseForm.category);
     formData.append('description', purchaseForm.description);
     formData.append('amount', purchaseForm.amount);
+    formData.append('isMaterialPurchase', purchaseForm.isMaterialPurchase);
+    if (purchaseForm.isMaterialPurchase) {
+      formData.append('materialName', purchaseForm.materialName);
+      formData.append('materialUnit', purchaseForm.materialUnit);
+      formData.append('materialQuantity', purchaseForm.materialQuantity);
+      formData.append('materialUnitCost', purchaseForm.materialUnitCost);
+    }
     formData.append('invoiceImage', purchaseFile);
 
     try {
       await api.post(`/projects/${projectId}/purchases`, formData);
       setIsPurchaseModalOpen(false);
-      setPurchaseForm({ category: 'Cement', description: '', amount: '' });
+      setPurchaseForm({ category: 'Cement', description: '', amount: '', isMaterialPurchase: false, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
       setPurchaseFile(null);
       loadPurchases();
     } catch (err) {
@@ -316,12 +346,17 @@ export default function ProjectDetail() {
 
   // --- PETTY CASH ---
   const loadPettyCash = async () => {
+    setIsPettyCashLoading(true);
     try {
-      const res = await api.get(`/projects/${projectId}/pettycash`);
+      const params = ledgerDate ? `date=${encodeURIComponent(ledgerDate)}` : `range=${ledgerFilter}`;
+      const res = await api.get(`/projects/${projectId}/pettycash?${params}`);
       setPettyCash(res.data.data.pettyCash);
+      setLedgerTransactions(res.data.data.filteredTransactions || []);
       setRefillRequests(res.data.data.refillRequests);
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsPettyCashLoading(false);
     }
   };
 
@@ -390,12 +425,61 @@ export default function ProjectDetail() {
 
   // --- MATERIALS ---
   const loadMaterials = async () => {
+    setIsMaterialsLoading(true);
     try {
       const res = await api.get(`/projects/${projectId}/materials`);
       setMaterials(res.data.data);
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsMaterialsLoading(false);
     }
+  };
+
+  const openMaterialUsageModal = (item) => {
+    if (project?.status === 'on_hold' && !isSuperAdmin()) {
+      alert('This project is currently on hold. Material usage recording is locked.');
+      return;
+    }
+    setSelectedUsageItem(item);
+    setUsageFormData({ quantity: '', reason: '', date: dayjs().format('YYYY-MM-DD') });
+    setIsUsageModalOpen(true);
+  };
+
+  const handleSubmitMaterialUsage = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedUsageItem) return;
+    const qty = Number(usageFormData.quantity);
+    if (!qty || qty <= 0) {
+      alert('Please enter a valid positive quantity.');
+      return;
+    }
+    if (qty > selectedUsageItem.balance) {
+      if (!window.confirm(`Warning: Quantity entered (${qty}) exceeds current available balance (${selectedUsageItem.balance} ${selectedUsageItem.unit || ''}). Do you want to proceed?`)) {
+        return;
+      }
+    }
+    try {
+      setIsSubmittingUsage(true);
+      await api.post(`/projects/${projectId}/materials/items/${selectedUsageItem._id}/usage`, {
+        quantity: qty,
+        reason: usageFormData.reason || 'Site consumption',
+        date: usageFormData.date || dayjs().format('YYYY-MM-DD'),
+      });
+      setIsUsageModalOpen(false);
+      setSelectedUsageItem(null);
+      loadMaterials();
+      alert(`Recorded ${qty} ${selectedUsageItem.unit || ''} usage for "${selectedUsageItem.itemName}".`);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to record material usage.');
+    } finally {
+      setIsSubmittingUsage(false);
+    }
+  };
+
+  const openMaterialHistoryModal = (item) => {
+    setSelectedHistoryItem(item);
+    setIsHistoryModalOpen(true);
   };
 
   const handleAddMaterial = async (e) => {
@@ -403,7 +487,7 @@ export default function ProjectDetail() {
     try {
       await api.post(`/projects/${projectId}/materials/items`, materialForm);
       setIsMaterialModalOpen(false);
-      setMaterialForm({ itemName: '', unit: 'bags', quantity: '', totalValue: '', remarks: '' });
+      setMaterialForm({ itemName: '', unit: 'bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
       loadMaterials();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add material');
@@ -453,12 +537,145 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleStartClosure = async () => {
+    if (project?.status === 'on_hold' && !isSuperAdmin()) {
+      alert('This project is currently on hold. Cannot start closure.');
+      return;
+    }
+    if (!window.confirm('Start the official Site Closure Procedure for this project? This will unlock the formal 10-step handover and clearance checklist.')) {
+      return;
+    }
+    try {
+      setIsStartingClosure(true);
+      const res = await api.post(`/projects/${projectId}/closure/start`);
+      setClosure(res.data.data);
+      alert('Site closure procedure initiated successfully!');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to start site closure procedure');
+    } finally {
+      setIsStartingClosure(false);
+    }
+  };
+
   const handleUpdateClosureText = async (field, val) => {
+    if (project?.status === 'on_hold' && !isSuperAdmin()) {
+      alert('This project is currently on hold. Operational changes are locked.');
+      return;
+    }
     try {
       const res = await api.put(`/projects/${projectId}/closure`, { [field]: val });
       setClosure(res.data.data);
     } catch (err) {
-      alert('Failed to update closure requirement');
+      alert(err.response?.data?.message || 'Failed to update closure requirement');
+    }
+  };
+
+  const handleSaveClosureMultipart = async (e) => {
+    if (e) e.preventDefault();
+    if (project?.status === 'on_hold' && !isSuperAdmin()) {
+      alert('This project is currently on hold. Operational changes are locked.');
+      return;
+    }
+
+    // Validation 1: Waste disposal mandatory image submission if YES
+    const hasExistingWastePhotos = (closure?.wasteDisposal?.photoUrls?.length || 0) > 0;
+    const hasNewWastePhotos = wastePhotosFiles.length > 0;
+    if (closure?.wasteDisposal?.done && !hasExistingWastePhotos && !hasNewWastePhotos) {
+      alert('Validation Error: Waste disposal requires at least one photographic proof when marked as YES (Site cleared). Please choose photo files to upload.');
+      return;
+    }
+
+    // Validation 2: Labour Payment PDF check
+    if (labourPaymentFile) {
+      const isPdf = labourPaymentFile.type === 'application/pdf' || labourPaymentFile.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        alert('Validation Error: Labour payment document must be a PDF file.');
+        return;
+      }
+    }
+
+    // Validation 3: Completed site photos check (warn if less than 5)
+    const totalSitePhotos = (closure?.completedSitePhotos?.length || 0) + sitePhotosFiles.length;
+    if (sitePhotosFiles.length > 0 && totalSitePhotos < 5) {
+      if (!window.confirm(`Notice: You have ${totalSitePhotos}/5 completed site photos. A minimum of 5 photos is required to fulfill requirement #4. Do you still want to proceed and save?`)) {
+        return;
+      }
+    }
+
+    try {
+      setIsSavingClosure(true);
+      const formData = new FormData();
+      if (closure?.toolsList !== undefined) formData.append('toolsList', closure.toolsList);
+      formData.append('wasteDisposalDone', closure?.wasteDisposal?.done ? 'true' : 'false');
+      formData.append('rentedToolsReturnedDone', closure?.rentedToolsReturned?.done ? 'true' : 'false');
+      if (closure?.pendingVendorPayments?.description !== undefined) {
+        formData.append('pendingVendorPaymentsDesc', closure.pendingVendorPayments.description);
+      }
+      if (closure?.pendingVendorPayments?.amount !== undefined) {
+        formData.append('pendingVendorPaymentsAmount', closure.pendingVendorPayments.amount);
+      }
+      if (closure?.balanceMaterials !== undefined) formData.append('balanceMaterials', closure.balanceMaterials);
+      formData.append('electricalDbMarking', closure?.electricalDbMarking ? 'true' : 'false');
+      if (closure?.materialTransfer?.destination) {
+        formData.append('materialTransferDestination', closure.materialTransfer.destination);
+      }
+      if (closure?.materialTransfer?.destinationNote !== undefined) {
+        formData.append('materialTransferNote', closure.materialTransfer.destinationNote);
+      }
+      if (closure?.pettyCashClosure?.finalAmount != null) {
+        formData.append('pettyCashClosureFinalAmount', closure.pettyCashClosure.finalAmount);
+      }
+      if (closure?.labourPayment?.details !== undefined) {
+        formData.append('labourPaymentDetails', closure.labourPayment.details);
+      }
+
+      // Append files
+      wastePhotosFiles.forEach(f => formData.append('wastePhotos', f));
+      if (rentedToolPhotoFile) formData.append('rentedToolPhoto', rentedToolPhotoFile);
+      sitePhotosFiles.forEach(f => formData.append('sitePhotos', f));
+      if (labourPaymentFile) formData.append('labourFile', labourPaymentFile);
+
+      const res = await api.put(`/projects/${projectId}/closure`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setClosure(res.data.data);
+      setWastePhotosFiles([]);
+      setRentedToolPhotoFile(null);
+      setSitePhotosFiles([]);
+      setLabourPaymentFile(null);
+      alert('Site closure requirements and uploaded files successfully saved!');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to save site closure');
+    } finally {
+      setIsSavingClosure(false);
+    }
+  };
+
+  const handleRemoveClosurePhoto = async (photoUrl, type) => {
+    if (project?.status === 'on_hold' && !isSuperAdmin()) {
+      alert('This project is on hold. Modifications are locked.');
+      return;
+    }
+    if (!window.confirm('Are you sure you want to remove this photograph?')) return;
+    try {
+      const field = type === 'site' ? 'removedSitePhoto' : 'removedWastePhoto';
+      const res = await api.put(`/projects/${projectId}/closure`, { [field]: photoUrl });
+      setClosure(res.data.data);
+    } catch (err) {
+      alert('Failed to remove photo');
+    }
+  };
+
+  const handleToggleHoldFromDetail = async () => {
+    if (!isSuperAdmin()) return;
+    const isHold = project?.status === 'on_hold';
+    const actionText = isHold ? 'resume this project to Ongoing' : 'put this project ON HOLD';
+    if (!window.confirm(`Are you sure you want to ${actionText}?`)) return;
+    try {
+      const res = await api.put(`/projects/${projectId}/hold`);
+      setProject(res.data.data);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update project hold status');
     }
   };
 
@@ -531,6 +748,44 @@ export default function ProjectDetail() {
         </div>
       </Card>
 
+      {/* On Hold Warning Banner */}
+      {project.status === 'on_hold' && (
+        <div style={{
+          backgroundColor: '#FFFBEB',
+          border: '2px solid #F59E0B',
+          borderRadius: 'var(--radius-md)',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '14px',
+          color: '#92400E',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertTriangle size={26} color="#D97706" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '15px' }}>
+                PROJECT IS CURRENTLY ON HOLD
+              </div>
+              <div style={{ fontSize: '13px', marginTop: '2px' }}>
+                This project is paused by administration. Site operations (recording attendance, petty cash expenses, material requests, and site closure) are temporarily locked.
+              </div>
+            </div>
+          </div>
+          {isSuperAdmin() && (
+            <button
+              onClick={handleToggleHoldFromDetail}
+              className="btn btn-sm"
+              style={{ backgroundColor: '#16A34A', color: '#FFF', flexShrink: 0 }}
+            >
+              <PlayCircle size={14} /> Resume Project
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 9 Module Navigation Tabs */}
       <div className="tabs-header-wrapper">
         <div className="tabs-header">
@@ -551,7 +806,7 @@ export default function ProjectDetail() {
           <button className={`tab-btn ${activeTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveTab('schedule')}>Schedule</button>
         </div>
         <div className="tabs-scroll-indicator">
-          <span>👈 Scroll tabs 👉</span>
+          <span> Scroll tabs </span>
         </div>
       </div>
 
@@ -632,33 +887,33 @@ export default function ProjectDetail() {
           {/* Subtab Toggle & Date Bar */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button 
-                className={`btn ${attendanceSubTab === 'daily' ? 'btn-primary' : 'btn-secondary'}`} 
+              <button
+                className={`btn ${attendanceSubTab === 'daily' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setAttendanceSubTab('daily')}
               >
                 Daily Attendance
               </button>
-              <button 
-                className={`btn ${attendanceSubTab === 'labour' ? 'btn-primary' : 'btn-secondary'}`} 
+              <button
+                className={`btn ${attendanceSubTab === 'labour' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setAttendanceSubTab('labour')}
               >
-                Payment Summary
+                Attendance & Payment Summary
               </button>
             </div>
 
             {/* Attendance Date Control */}
             {attendanceSubTab === 'daily' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <input 
-                  type="date" 
-                  className="input" 
-                  style={{ width: '150px' }} 
-                  value={attendanceDate} 
-                  onChange={(e) => setAttendanceDate(e.target.value)} 
+                <input
+                  type="date"
+                  className="input"
+                  style={{ width: '150px' }}
+                  value={attendanceDate}
+                  onChange={(e) => setAttendanceDate(e.target.value)}
                 />
                 {attendanceDate !== dayjs().format('YYYY-MM-DD') && (
-                  <button 
-                    className="btn btn-secondary btn-sm" 
+                  <button
+                    className="btn btn-secondary btn-sm"
                     onClick={() => setAttendanceDate(dayjs().format('YYYY-MM-DD'))}
                   >
                     Jump to Today
@@ -710,7 +965,7 @@ export default function ProjectDetail() {
                     marginTop: '4px',
                     color: dailyAttendanceSummary.extra > 0 ? '#059669' : dailyAttendanceSummary.balanceDue > 0 ? '#DC2626' : '#059669'
                   }}>
-                    {dailyAttendanceSummary.extra > 0 
+                    {dailyAttendanceSummary.extra > 0
                       ? `₹${dailyAttendanceSummary.extra.toLocaleString('en-IN')}`
                       : dailyAttendanceSummary.balanceDue > 0
                         ? `₹${dailyAttendanceSummary.balanceDue.toLocaleString('en-IN')}`
@@ -725,7 +980,7 @@ export default function ProjectDetail() {
                   {/* Worker Search Bar with Autocomplete Dropdown */}
                   <div style={{ position: 'relative', flex: 1, minWidth: '240px', width: '100%', maxWidth: '520px' }}>
                     <div style={{ position: 'relative' }}>
-                      <input 
+                      <input
                         type="text"
                         className="input"
                         style={{ paddingLeft: '36px', paddingRight: workerSearchQuery ? '36px' : '12px' }}
@@ -772,7 +1027,7 @@ export default function ProjectDetail() {
                             if (!combined.some(c => c._id === w._id)) combined.push(w);
                           });
                           const queryLower = workerSearchQuery.toLowerCase();
-                          const matches = combined.filter(w => 
+                          const matches = combined.filter(w =>
                             w.name?.toLowerCase().includes(queryLower) ||
                             w.skill?.toLowerCase().includes(queryLower) ||
                             w.phone?.includes(queryLower)
@@ -784,9 +1039,9 @@ export default function ProjectDetail() {
                                 <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
                                   No worker found matching "<strong>{workerSearchQuery}</strong>"
                                 </p>
-                                <Button 
-                                  size="sm" 
-                                  variant="primary" 
+                                <Button
+                                  size="sm"
+                                  variant="primary"
                                   onClick={() => {
                                     setNewWorkerForm({ ...newWorkerForm, name: workerSearchQuery });
                                     setIsWorkerModalOpen(true);
@@ -803,7 +1058,7 @@ export default function ProjectDetail() {
                               {matches.map(w => {
                                 const isAlreadyAdded = attendanceData.entries.some(e => (e.worker?._id || e.worker) === w._id);
                                 return (
-                                  <div 
+                                  <div
                                     key={w._id}
                                     style={{
                                       padding: '10px 14px',
@@ -888,9 +1143,9 @@ export default function ProjectDetail() {
 
                   {/* Actions: Create Worker Modal & Save Record */}
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => {
                         setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
                         setIsWorkerModalOpen(true);
@@ -898,10 +1153,10 @@ export default function ProjectDetail() {
                     >
                       + New Worker
                     </Button>
-                    <Button 
-                      size="sm" 
-                      variant="primary" 
-                      disabled={isSavingAttendance} 
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={isSavingAttendance}
                       onClick={handleSaveAttendance}
                     >
                       {isSavingAttendance ? 'Saving...' : "Save Today's Record"}
@@ -910,7 +1165,7 @@ export default function ProjectDetail() {
                 </div>
 
                 {/* Attendance Table */}
-                <div className="table-scroll-hint">👈 Swipe horizontally to view all attendance fields 👉</div>
+                <div className="table-scroll-hint"> Swipe horizontally to view all attendance fields </div>
                 {isAttendanceLoading ? (
                   <LoadingSpinner text="Fetching attendance entries..." style={{ padding: '30px' }} />
                 ) : (
@@ -954,34 +1209,34 @@ export default function ProjectDetail() {
                                   <span style={{ fontWeight: 600 }}>₹{worker.dailyRate || 0}</span>
                                 </td>
                                 <td>
-                                  <input 
-                                    className="input" 
-                                    style={{ width: '90px', padding: '6px' }} 
-                                    value={entry.timeIn || '09:00'} 
+                                  <input
+                                    className="input"
+                                    style={{ width: '90px', padding: '6px' }}
+                                    value={entry.timeIn || '09:00'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].timeIn = e.target.value;
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }} 
+                                    }}
                                   />
                                 </td>
                                 <td>
-                                  <input 
-                                    className="input" 
-                                    style={{ width: '90px', padding: '6px' }} 
-                                    value={entry.timeOut || '18:00'} 
+                                  <input
+                                    className="input"
+                                    style={{ width: '90px', padding: '6px' }}
+                                    value={entry.timeOut || '18:00'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].timeOut = e.target.value;
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }} 
+                                    }}
                                   />
                                 </td>
                                 <td>
-                                  <select 
-                                    className="input" 
+                                  <select
+                                    className="input"
                                     style={{ width: '120px', padding: '6px' }}
-                                    value={entry.dutyType || 'full_day'} 
+                                    value={entry.dutyType || 'full_day'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].dutyType = e.target.value;
@@ -995,36 +1250,36 @@ export default function ProjectDetail() {
                                   </select>
                                 </td>
                                 <td>
-                                  <input 
+                                  <input
                                     type="number"
                                     min="0"
-                                    className="input" 
-                                    style={{ width: '110px', padding: '6px', fontWeight: 600, color: '#059669' }} 
-                                    value={entry.amountPaid ?? ''} 
+                                    className="input"
+                                    style={{ width: '110px', padding: '6px', fontWeight: 600, color: '#059669' }}
+                                    value={entry.amountPaid ?? ''}
                                     placeholder="0"
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].amountPaid = e.target.value;
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }} 
+                                    }}
                                   />
                                 </td>
                                 <td>
-                                  <input 
-                                    className="input" 
+                                  <input
+                                    className="input"
                                     style={{ minWidth: '130px', padding: '6px' }}
-                                    value={entry.remarks || ''} 
-                                    placeholder="e.g. Electrical work" 
+                                    value={entry.remarks || ''}
+                                    placeholder="e.g. Electrical work"
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].remarks = e.target.value;
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }} 
+                                    }}
                                   />
                                 </td>
                                 <td>
-                                  <button 
-                                    className="btn btn-sm btn-danger" 
+                                  <button
+                                    className="btn btn-sm btn-danger"
                                     onClick={() => {
                                       const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
@@ -1055,27 +1310,27 @@ export default function ProjectDetail() {
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Filter size={15} /> Filter By Date:
                     </span>
-                    <input 
-                      type="date" 
-                      className="input" 
-                      style={{ width: '150px' }} 
-                      value={paymentSummaryDate === 'all' ? '' : paymentSummaryDate} 
-                      onChange={(e) => setPaymentSummaryDate(e.target.value)} 
+                    <input
+                      type="date"
+                      className="input"
+                      style={{ width: '150px' }}
+                      value={paymentSummaryDate === 'all' ? '' : paymentSummaryDate}
+                      onChange={(e) => setPaymentSummaryDate(e.target.value)}
                     />
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <button 
+                      <button
                         className={`btn btn-sm ${paymentSummaryDate === dayjs().format('YYYY-MM-DD') ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setPaymentSummaryDate(dayjs().format('YYYY-MM-DD'))}
                       >
                         Today
                       </button>
-                      <button 
+                      <button
                         className={`btn btn-sm ${paymentSummaryDate === dayjs().subtract(1, 'day').format('YYYY-MM-DD') ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setPaymentSummaryDate(dayjs().subtract(1, 'day').format('YYYY-MM-DD'))}
                       >
                         Yesterday
                       </button>
-                      <button 
+                      <button
                         className={`btn btn-sm ${paymentSummaryDate === 'all' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setPaymentSummaryDate('all')}
                       >
@@ -1131,7 +1386,7 @@ export default function ProjectDetail() {
                   <Badge variant="active">{paymentSummaryDate === 'all' ? 'All Dates' : dayjs(paymentSummaryDate).format('DD MMM YYYY')}</Badge>
                 </div>
 
-                <div className="table-scroll-hint">👈 Swipe horizontally to view all payment columns 👉</div>
+                <div className="table-scroll-hint"> Swipe horizontally to view all payment columns </div>
                 <div className="table-container">
                   <table>
                     <thead>
@@ -1235,12 +1490,12 @@ export default function ProjectDetail() {
         <Card>
           <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
             <h3>Direct Company Purchases</h3>
-            { (isSuperAdmin() || isAccounts()) && (
+            {(isSuperAdmin() || isAccounts()) && (
               <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
             )}
           </div>
 
-          <div className="table-scroll-hint">👈 Swipe horizontally to view all purchase records 👉</div>
+          <div className="table-scroll-hint"> Swipe horizontally to view all purchase records </div>
           <div className="table-container">
             <table>
               <thead>
@@ -1280,7 +1535,7 @@ export default function ProjectDetail() {
 
       {/* TAB 4: PETTY CASH */}
       {activeTab === 'pettycash' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        isPettyCashLoading || !pettyCash ? <LoadingSpinner text="Loading petty cash ledger..." style={{ padding: '48px' }} /> : <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="kpi-grid-3">
             <Card className="kpi-compact-card">
               <div className="text-muted">Total Credits</div>
@@ -1307,10 +1562,14 @@ export default function ProjectDetail() {
                   <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
                 )}
                 <Button size="sm" icon={Plus} onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
+                <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); }}>
+                  <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
+                </select>
+                <input type="date" className="input" style={{ width: '145px', padding: '5px 8px' }} value={ledgerDate} onChange={(e) => setLedgerDate(e.target.value)} />
               </div>
             </div>
 
-            <div className="table-scroll-hint">👈 Swipe horizontally to view all transactions 👉</div>
+            <div className="table-scroll-hint"> Swipe horizontally to view all transactions </div>
             <div className="table-container">
               <table>
                 <thead>
@@ -1325,10 +1584,10 @@ export default function ProjectDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {!pettyCash?.transactions || pettyCash.transactions.length === 0 ? (
+                  {ledgerTransactions.length === 0 ? (
                     <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8' }}>No transactions recorded.</td></tr>
                   ) : (
-                    pettyCash.transactions.map((t, idx) => (
+                    ledgerTransactions.map((t, idx) => (
                       <tr key={idx}>
                         <td>{dayjs(t.date).format('DD-MM-YYYY')}</td>
                         <td>
@@ -1356,7 +1615,7 @@ export default function ProjectDetail() {
           {/* Cash Refill Requests List */}
           <Card>
             <h3>Cash Refill Requests</h3>
-            <div className="table-scroll-hint" style={{ marginTop: '10px' }}>👈 Swipe horizontally to view refill requests 👉</div>
+            <div className="table-scroll-hint" style={{ marginTop: '10px' }}> Swipe horizontally to view refill requests </div>
             <div className="table-container" style={{ marginTop: '4px' }}>
               <table>
                 <thead>
@@ -1397,7 +1656,7 @@ export default function ProjectDetail() {
 
       {/* TAB 5: MATERIALS LIST */}
       {activeTab === 'materials' && (
-        <Card>
+        isMaterialsLoading || !materials ? <LoadingSpinner text="Loading material inventory..." style={{ padding: '48px' }} /> : <Card>
           <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
             <h3>Site Material Inventory List</h3>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -1406,14 +1665,17 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          <div className="table-scroll-hint">👈 Swipe horizontally to view material inventory 👉</div>
+          <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
           <div className="table-container">
             <table>
               <thead>
                 <tr>
                   <th>Item Name</th>
                   <th>Unit</th>
-                  <th>Quantity</th>
+                  <th>Received</th>
+                  <th>Used</th>
+                  <th>Balance</th>
+                  <th>Actions</th>
                   <th>Total Value (₹)</th>
                   <th>Remarks</th>
                 </tr>
@@ -1426,8 +1688,26 @@ export default function ProjectDetail() {
                     <tr key={m._id}>
                       <td><strong>{m.itemName}</strong></td>
                       <td>{m.unit || '—'}</td>
-                      <td>{m.quantity}</td>
-                      <td style={{ fontWeight: 600 }}>₹{(m.totalValue || 0).toLocaleString('en-IN')}</td>
+                      <td>{m.totalReceived}</td>
+                      <td>{m.totalUsed}</td>
+                      <td style={{ fontWeight: 700 }}>{m.balance}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <Button
+                          size="sm"
+                          onClick={() => openMaterialUsageModal(m)}
+                          disabled={project?.status === 'on_hold' && !isSuperAdmin()}
+                        >
+                          Record Usage
+                        </Button>{' '}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openMaterialHistoryModal(m)}
+                        >
+                          History
+                        </Button>
+                      </td>
+                      <td style={{ fontWeight: 600 }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
                       <td>{m.remarks || '—'}</td>
                     </tr>
                   ))
@@ -1498,7 +1778,7 @@ export default function ProjectDetail() {
             <Button size="sm" onClick={handleAddTool}>Add Tool</Button>
           </div>
 
-          <div className="table-scroll-hint">👈 Swipe horizontally to view tools 👉</div>
+          <div className="table-scroll-hint"> Swipe horizontally to view tools </div>
           <div className="table-container">
             <table>
               <thead>
@@ -1526,81 +1806,454 @@ export default function ProjectDetail() {
 
       {/* TAB 7: SITE CLOSURE */}
       {activeTab === 'closure' && (
-        <Card>
-          <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
-            <div>
-              <h3>Project Closure Process (10 Requirements)</h3>
-              <p className="text-muted">Completed: {closure?.completedCount || 0}/10 items</p>
-            </div>
-            <Badge variant={closure?.completedCount === 10 ? 'completed' : 'pending'}>
-              {closure?.completedCount === 10 ? 'CLOSED & COMPLETED' : 'IN PROGRESS'}
-            </Badge>
-          </div>
+        <div>
+          {!closure?.isStarted && (closure?.completedCount || 0) === 0 ? (
+            <Card style={{ padding: '40px 24px', textAlign: 'center', maxWidth: '640px', margin: '20px auto' }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                backgroundColor: '#EFF6FF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px auto',
+                color: 'var(--color-brand)'
+              }}>
+                <CheckCircle2 size={36} />
+              </div>
+              <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>Start Site Closure Procedure</h2>
+              <p className="text-muted" style={{ fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
+                This project is currently marked as <strong>{project.status.toUpperCase()}</strong>.
+                When physical on-site work is nearing completion, start the formal closure procedure to unlock the 10-step checklist (including tools audit, mandatory waste clearance photos, min 5 finished site photos, material transfer, and labour wage PDF documentation).
+              </p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                <Button
+                  variant="primary"
+                  icon={PlayCircle}
+                  disabled={isStartingClosure || (project.status === 'on_hold' && !isSuperAdmin())}
+                  onClick={handleStartClosure}
+                >
+                  {isStartingClosure ? 'Starting Closure...' : 'Start Closure Procedure'}
+                </Button>
+              </div>
+              {project.status === 'on_hold' && (
+                <p style={{ color: '#D97706', fontSize: '12px', marginTop: '12px' }}>
+                  ⚠️ Project is currently ON HOLD. Hold must be resumed by admin before closure can begin.
+                </p>
+              )}
+            </Card>
+          ) : (
+            <Card>
+              <div className="mobile-flex-wrap" style={{ marginBottom: '16px', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Project Closure Checklist (10 Requirements)</h3>
+                  <p className="text-muted" style={{ fontSize: '13px', marginTop: '4px' }}>
+                    Completed: <strong>{closure?.completedCount || 0}/10</strong> items fulfilled
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Badge variant={closure?.completedCount === 10 ? 'completed' : 'pending'}>
+                    {closure?.completedCount === 10 ? 'CLOSED & COMPLETED' : 'IN PROGRESS'}
+                  </Badge>
+                </div>
+              </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="form-group">
-              <label>1. List of Tools</label>
-              <textarea className="input" rows="2" value={closure?.toolsList || ''} onChange={(e) => setClosure({ ...closure, toolsList: e.target.value })} onBlur={(e) => handleUpdateClosureText('toolsList', e.target.value)} placeholder="Enter list of tools at site closure..." />
-            </div>
+              {/* Visual Progress Bar */}
+              <div style={{ width: '100%', height: '8px', backgroundColor: '#E2E8F0', borderRadius: '4px', overflow: 'hidden', marginBottom: '24px' }}>
+                <div style={{
+                  width: `${((closure?.completedCount || 0) / 10) * 100}%`,
+                  height: '100%',
+                  backgroundColor: closure?.completedCount === 10 ? '#16A34A' : 'var(--color-brand)',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
 
-            <div className="form-group">
-              <label>2. Waste Disposal Done?</label>
-              <select className="input" value={closure?.wasteDisposal?.done ? 'true' : 'false'} onChange={(e) => handleUpdateClosureText('wasteDisposalDone', e.target.value)}>
-                <option value="false">NO — Waste pending</option>
-                <option value="true">YES — Site cleared of waste</option>
-              </select>
-            </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* 1. Tools List */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>1. List of Tools at Site</label>
+                  <textarea
+                    className="input"
+                    rows="2"
+                    value={closure?.toolsList || ''}
+                    onChange={(e) => setClosure({ ...closure, toolsList: e.target.value })}
+                    onBlur={(e) => handleUpdateClosureText('toolsList', e.target.value)}
+                    placeholder="Enter inventory of company tools present at site closure..."
+                  />
+                </div>
 
-            <div className="form-group">
-              <label>3. Returned Rented Tools?</label>
-              <select className="input" value={closure?.rentedToolsReturned?.done ? 'true' : 'false'} onChange={(e) => handleUpdateClosureText('rentedToolsReturnedDone', e.target.value)}>
-                <option value="false">NO — Rented tools pending return</option>
-                <option value="true">YES — All rented tools returned</option>
-              </select>
-            </div>
+                {/* 2. Waste Disposal with Mandatory Photo Proof */}
+                <div className="form-group" style={{ padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontWeight: 600, margin: 0 }}>2. Waste Disposal & Site Cleared?</label>
+                    <Badge variant={closure?.wasteDisposal?.done && ((closure?.wasteDisposal?.photoUrls?.length || 0) > 0 || wastePhotosFiles.length > 0) ? 'completed' : 'pending'}>
+                      {closure?.wasteDisposal?.done ? ((closure?.wasteDisposal?.photoUrls?.length || 0) > 0 || wastePhotosFiles.length > 0 ? 'Verified & Completed' : 'Photo Required') : 'Pending'}
+                    </Badge>
+                  </div>
 
-            <div className="form-group">
-              <label>5. Pending Vendor Payments</label>
-              <input className="input" placeholder="Vendor payment details..." value={closure?.pendingVendorPayments?.description || ''} onChange={(e) => handleUpdateClosureText('pendingVendorPaymentsDesc', e.target.value)} />
-            </div>
+                  <select
+                    className="input"
+                    value={closure?.wasteDisposal?.done ? 'true' : 'false'}
+                    onChange={(e) => {
+                      const isYes = e.target.value === 'true';
+                      setClosure({
+                        ...closure,
+                        wasteDisposal: { ...closure?.wasteDisposal, done: isYes }
+                      });
+                      if (!isYes) {
+                        handleUpdateClosureText('wasteDisposalDone', 'false');
+                      }
+                    }}
+                    style={{ marginBottom: '10px' }}
+                  >
+                    <option value="false">NO — Waste disposal pending</option>
+                    <option value="true">YES — Site cleared & debris removed</option>
+                  </select>
 
-            <div className="form-group">
-              <label>6. Balance Materials</label>
-              <textarea className="input" rows="2" value={closure?.balanceMaterials || ''} onChange={(e) => setClosure({ ...closure, balanceMaterials: e.target.value })} onBlur={(e) => handleUpdateClosureText('balanceMaterials', e.target.value)} placeholder="List leftover materials..." />
-            </div>
+                  {/* Mandatory photo submission when YES */}
+                  {closure?.wasteDisposal?.done && (
+                    <div style={{
+                      padding: '12px 14px',
+                      backgroundColor: '#F0FDF4',
+                      border: '1px solid #BBF7D0',
+                      borderRadius: '6px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '13px', color: '#166534' }}>
+                          📷 Proof of Waste Disposal (Mandatory for YES) *
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#15803D', fontWeight: 600 }}>
+                          {(closure?.wasteDisposal?.photoUrls?.length || 0) + wastePhotosFiles.length > 0 ? '✓ Proof Attached' : '⚠️ Photo required to save'}
+                        </span>
+                      </div>
 
-            <div className="form-group">
-              <label>7. Electrical DB Marking Completed?</label>
-              <select className="input" value={closure?.electricalDbMarking ? 'true' : 'false'} onChange={(e) => handleUpdateClosureText('electricalDbMarking', e.target.value)}>
-                <option value="false">NO</option>
-                <option value="true">YES — DB marked</option>
-              </select>
-            </div>
+                      {closure?.wasteDisposal?.photoUrls?.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                          {closure.wasteDisposal.photoUrls.map((url, idx) => (
+                            <div key={idx} style={{ position: 'relative', width: '70px', height: '70px', borderRadius: '4px', overflow: 'hidden', border: '1px solid #CBD5E1' }}>
+                              <img src={url} alt="Waste clearance" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveClosurePhoto(url, 'waste')}
+                                style={{
+                                  position: 'absolute', top: 2, right: 2,
+                                  backgroundColor: 'rgba(0,0,0,0.65)', color: '#FFF',
+                                  border: 'none', borderRadius: '50%', width: '18px', height: '18px',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px'
+                                }}
+                                title="Remove photo"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-            <div className="form-group">
-              <label>8. Transfer of Balance Materials</label>
-              <select className="input" value={closure?.materialTransfer?.destination || ''} onChange={(e) => handleUpdateClosureText('materialTransferDestination', e.target.value)}>
-                <option value="">Select Destination...</option>
-                <option value="godown">Godown</option>
-                <option value="new_site">New Site</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={(e) => setWastePhotosFiles(Array.from(e.target.files || []))}
+                        className="input"
+                        style={{ backgroundColor: '#FFF' }}
+                      />
+                      {wastePhotosFiles.length > 0 && (
+                        <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '6px' }}>
+                          ✓ {wastePhotosFiles.length} new waste photo(s) selected
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-            <div className="form-group">
-              <label>10. Labour Payment Details</label>
-              <textarea className="input" rows="2" value={closure?.labourPayment?.details || ''} onChange={(e) => setClosure({ ...closure, labourPayment: { ...closure.labourPayment, details: e.target.value } })} onBlur={(e) => handleUpdateClosureText('labourPaymentDetails', e.target.value)} placeholder="Labour payment remarks / summary..." />
-            </div>
-          </div>
-        </Card>
+                {/* 3. Returned Rented Tools */}
+                <div className="form-group" style={{ padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontWeight: 600, margin: 0 }}>3. Returned Rented Tools?</label>
+                    <Badge variant={closure?.rentedToolsReturned?.done ? 'completed' : 'pending'}>
+                      {closure?.rentedToolsReturned?.done ? 'Returned' : 'Pending Return'}
+                    </Badge>
+                  </div>
+                  <select
+                    className="input"
+                    value={closure?.rentedToolsReturned?.done ? 'true' : 'false'}
+                    onChange={(e) => handleUpdateClosureText('rentedToolsReturnedDone', e.target.value)}
+                    style={{ marginBottom: '10px' }}
+                  >
+                    <option value="false">NO — Rented tools pending return</option>
+                    <option value="true">YES — All rented tools returned</option>
+                  </select>
+
+                  {closure?.rentedToolsReturned?.photoUrl && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <img src={closure.rentedToolsReturned.photoUrl} alt="Return receipt" style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+                      <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Return slip / receipt attached</span>
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setRentedToolPhotoFile(e.target.files?.[0] || null)}
+                    className="input"
+                    style={{ backgroundColor: '#FFF' }}
+                  />
+                  {rentedToolPhotoFile && (
+                    <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
+                      ✓ New receipt photo selected: {rentedToolPhotoFile.name}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Completed Site Photographs (Minimum 5 Photos) */}
+                <div className="form-group" style={{ padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label style={{ fontWeight: 600, margin: 0 }}>4. Completed Site Photographs (Minimum 5 Photos)</label>
+                    <Badge variant={(closure?.completedSitePhotos?.length || 0) + sitePhotosFiles.length >= 5 ? 'completed' : 'pending'}>
+                      Photos: {(closure?.completedSitePhotos?.length || 0) + sitePhotosFiles.length}/5 {(closure?.completedSitePhotos?.length || 0) + sitePhotosFiles.length >= 5 ? '✓ Fulfilled' : '⚠️ Min 5 required'}
+                    </Badge>
+                  </div>
+                  <p className="text-muted" style={{ fontSize: '12px', marginBottom: '12px' }}>
+                    Capture finished angles, rooms, exterior elevation, and detailed work (minimum 5 photographs mandatory for completion).
+                  </p>
+
+                  {closure?.completedSitePhotos?.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(85px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                      {closure.completedSitePhotos.map((url, idx) => (
+                        <div key={idx} style={{ position: 'relative', width: '100%', height: '80px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #CBD5E1' }}>
+                          <img src={url} alt={`Site photo ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveClosurePhoto(url, 'site')}
+                            style={{
+                              position: 'absolute', top: 2, right: 2,
+                              backgroundColor: 'rgba(0,0,0,0.65)', color: '#FFF',
+                              border: 'none', borderRadius: '50%', width: '20px', height: '20px',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px'
+                            }}
+                            title="Remove photo"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => setSitePhotosFiles(Array.from(e.target.files || []))}
+                    className="input"
+                    style={{ backgroundColor: '#FFF' }}
+                  />
+                  {sitePhotosFiles.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '6px' }}>
+                      ✓ {sitePhotosFiles.length} new site photo(s) selected for upload on save
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Pending Vendor Payments */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>5. Pending Vendor Payments</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+                    <input
+                      className="input"
+                      placeholder="Vendor payment details & description..."
+                      value={closure?.pendingVendorPayments?.description || ''}
+                      onChange={(e) => setClosure({
+                        ...closure,
+                        pendingVendorPayments: { ...closure?.pendingVendorPayments, description: e.target.value }
+                      })}
+                      onBlur={(e) => handleUpdateClosureText('pendingVendorPaymentsDesc', e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      className="input"
+                      placeholder="Amount (₹)"
+                      value={closure?.pendingVendorPayments?.amount || ''}
+                      onChange={(e) => setClosure({
+                        ...closure,
+                        pendingVendorPayments: { ...closure?.pendingVendorPayments, amount: e.target.value }
+                      })}
+                      onBlur={(e) => handleUpdateClosureText('pendingVendorPaymentsAmount', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Balance Materials */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>6. Balance Materials at Site</label>
+                  <textarea
+                    className="input"
+                    rows="2"
+                    value={closure?.balanceMaterials || ''}
+                    onChange={(e) => setClosure({ ...closure, balanceMaterials: e.target.value })}
+                    onBlur={(e) => handleUpdateClosureText('balanceMaterials', e.target.value)}
+                    placeholder="List leftover materials, quantities, condition..."
+                  />
+                </div>
+
+                {/* 7. Electrical DB Marking */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>7. Electrical DB Marking Completed?</label>
+                  <select
+                    className="input"
+                    value={closure?.electricalDbMarking ? 'true' : 'false'}
+                    onChange={(e) => handleUpdateClosureText('electricalDbMarking', e.target.value)}
+                  >
+                    <option value="false">NO — DB markings pending</option>
+                    <option value="true">YES — Distribution board circuits labelled</option>
+                  </select>
+                </div>
+
+                {/* 8. Transfer of Balance Materials */}
+                <div className="form-group">
+                  <label style={{ fontWeight: 600 }}>8. Transfer of Balance Materials</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+                    <select
+                      className="input"
+                      value={closure?.materialTransfer?.destination || ''}
+                      onChange={(e) => handleUpdateClosureText('materialTransferDestination', e.target.value)}
+                    >
+                      <option value="">Select Destination...</option>
+                      <option value="godown">Godown / Warehouse</option>
+                      <option value="new_site">New Site Transfer</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input
+                      className="input"
+                      placeholder="Destination details or note..."
+                      value={closure?.materialTransfer?.destinationNote || ''}
+                      onChange={(e) => setClosure({
+                        ...closure,
+                        materialTransfer: { ...closure?.materialTransfer, destinationNote: e.target.value }
+                      })}
+                      onBlur={(e) => handleUpdateClosureText('materialTransferNote', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* 9. Petty Cash Closure */}
+                <div className="form-group" style={{ padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontWeight: 600, margin: 0 }}>9. Petty Cash Closure & Hand-in</label>
+                    <Badge variant={closure?.pettyCashClosure?.finalAmount != null ? 'completed' : 'pending'}>
+                      {closure?.pettyCashClosure?.finalAmount != null ? 'Settled' : 'Pending Settlement'}
+                    </Badge>
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                    System Petty Cash Balance: <strong>₹{(financials?.totalPettyCashBalance || 0).toLocaleString('en-IN')}</strong>
+                  </div>
+                  <input
+                    type="number"
+                    className="input"
+                    placeholder="Enter final cash handed in / settled (₹)..."
+                    value={closure?.pettyCashClosure?.finalAmount != null ? closure.pettyCashClosure.finalAmount : ''}
+                    onChange={(e) => setClosure({
+                      ...closure,
+                      pettyCashClosure: { finalAmount: e.target.value }
+                    })}
+                    onBlur={(e) => handleUpdateClosureText('pettyCashClosureFinalAmount', e.target.value)}
+                  />
+                </div>
+
+                {/* 10. Labour Payment Details & PDF Submission */}
+                <div className="form-group" style={{ padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontWeight: 600, margin: 0 }}>10. Labour Payment Details & PDF Submission</label>
+                    <Badge variant={closure?.labourPayment?.details || closure?.labourPayment?.fileUrl || labourPaymentFile ? 'completed' : 'pending'}>
+                      {closure?.labourPayment?.fileUrl ? 'PDF Submitted' : (closure?.labourPayment?.details ? 'Details Provided' : 'Pending')}
+                    </Badge>
+                  </div>
+
+                  <textarea
+                    className="input"
+                    rows="2"
+                    value={closure?.labourPayment?.details || ''}
+                    onChange={(e) => setClosure({
+                      ...closure,
+                      labourPayment: { ...closure?.labourPayment, details: e.target.value }
+                    })}
+                    onBlur={(e) => handleUpdateClosureText('labourPaymentDetails', e.target.value)}
+                    placeholder="Labour payment remarks, wage settlement summary, worker sign-off..."
+                    style={{ marginBottom: '12px' }}
+                  />
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      📄 Labour Payment Details PDF Submission:
+                    </label>
+
+                    {closure?.labourPayment?.fileUrl && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <a
+                          href={closure.labourPayment.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-sm btn-outline"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            color: '#2563EB',
+                            borderColor: '#BFDBFE',
+                            backgroundColor: '#EFF6FF'
+                          }}
+                        >
+                          <FileText size={14} />
+                          <span>View Uploaded Labour Payment Document (PDF)</span>
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                    )}
+
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={(e) => setLabourPaymentFile(e.target.files?.[0] || null)}
+                      className="input"
+                      style={{ backgroundColor: '#FFF' }}
+                    />
+                    {labourPaymentFile && (
+                      <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
+                        ✓ PDF Document Selected: <strong>{labourPaymentFile.name}</strong> ({(labourPaymentFile.size / 1024).toFixed(1)} KB)
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Save Progress Button */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid var(--color-border)' }}>
+                  <Button
+                    variant="primary"
+                    icon={Upload}
+                    onClick={handleSaveClosureMultipart}
+                    disabled={isSavingClosure || (project.status === 'on_hold' && !isSuperAdmin())}
+                  >
+                    {isSavingClosure ? 'Saving & Uploading Files...' : 'Save Site Closure Progress & Upload Files'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* TAB 8: SCHEDULE */}
+      {activeTab === 'schedule' && (
+        <ScheduleTab projectId={projectId} />
       )}
 
       {/* MODALS */}
       {/* Worker Quick Create */}
-      <Modal 
-        isOpen={isWorkerModalOpen} 
-        onClose={() => setIsWorkerModalOpen(false)} 
-        title="Quick Add Worker to Attendance" 
+      <Modal
+        isOpen={isWorkerModalOpen}
+        onClose={() => setIsWorkerModalOpen(false)}
+        title="Quick Add Worker to Attendance"
         footer={<Button variant="primary" onClick={handleCreateWorker}>Save & Add to Attendance</Button>}
       >
         <form onSubmit={handleCreateWorker} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1626,34 +2279,34 @@ export default function ProjectDetail() {
 
           <div className="form-group">
             <label>Worker Full Name *</label>
-            <input 
-              className="input" 
-              value={newWorkerForm.name} 
-              onChange={(e) => setNewWorkerForm({ ...newWorkerForm, name: e.target.value })} 
+            <input
+              className="input"
+              value={newWorkerForm.name}
+              onChange={(e) => setNewWorkerForm({ ...newWorkerForm, name: e.target.value })}
               placeholder="e.g. Ramesh Kumar"
-              required 
+              required
             />
           </div>
 
           <div className="responsive-grid-2col" style={{ gap: '12px' }}>
             <div className="form-group">
               <label>Skill / Trade</label>
-              <input 
-                className="input" 
-                value={newWorkerForm.skill} 
-                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, skill: e.target.value })} 
-                placeholder="Carpenter, Electrician, Painter, Helper" 
+              <input
+                className="input"
+                value={newWorkerForm.skill}
+                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, skill: e.target.value })}
+                placeholder="Carpenter, Electrician, Painter, Helper"
               />
             </div>
 
             <div className="form-group">
               <label>Daily Rate / Amount (₹) *</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 min="0"
-                className="input" 
-                value={newWorkerForm.dailyRate} 
-                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, dailyRate: e.target.value })} 
+                className="input"
+                value={newWorkerForm.dailyRate}
+                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, dailyRate: e.target.value })}
                 placeholder="800"
                 required
               />
@@ -1663,18 +2316,18 @@ export default function ProjectDetail() {
           <div className="responsive-grid-2col" style={{ gap: '12px' }}>
             <div className="form-group">
               <label>Phone Number</label>
-              <input 
-                className="input" 
-                value={newWorkerForm.phone || ''} 
-                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, phone: e.target.value })} 
-                placeholder="10-digit mobile number" 
+              <input
+                className="input"
+                value={newWorkerForm.phone || ''}
+                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, phone: e.target.value })}
+                placeholder="10-digit mobile number"
               />
             </div>
 
             <div className="form-group">
               <label>Worker Category</label>
-              <select 
-                className="input" 
+              <select
+                className="input"
                 value={newWorkerForm.workerType || 'daily_wage'}
                 onChange={(e) => setNewWorkerForm({ ...newWorkerForm, workerType: e.target.value })}
               >
@@ -1703,6 +2356,11 @@ export default function ProjectDetail() {
             <label>Amount (₹) *</label>
             <input type="number" className="input" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, amount: e.target.value })} required />
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}><input type="checkbox" checked={purchaseForm.isMaterialPurchase} onChange={(e) => setPurchaseForm({ ...purchaseForm, isMaterialPurchase: e.target.checked })} /> Add received quantity to Material Inventory</label>
+          {purchaseForm.isMaterialPurchase && <>
+            <div className="form-group"><label>Material Name *</label><input className="input" value={purchaseForm.materialName} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })} required /></div>
+            <div className="responsive-grid-2col" style={{ gap: '12px' }}><div className="form-group"><label>Unit</label><input className="input" value={purchaseForm.materialUnit} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })} /></div><div className="form-group"><label>Quantity Received *</label><input type="number" min="0" className="input" value={purchaseForm.materialQuantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialQuantity: e.target.value })} required /></div></div>
+          </>}
           <div className="form-group">
             <label>Invoice File / Photo (REQUIRED) *</label>
             <input type="file" className="input" onChange={(e) => setPurchaseFile(e.target.files[0])} required />
@@ -1785,10 +2443,164 @@ export default function ProjectDetail() {
             <input type="number" className="input" value={materialForm.quantity} onChange={(e) => setMaterialForm({ ...materialForm, quantity: e.target.value })} required />
           </div>
           <div className="form-group">
+            <label>Unit *</label>
+            <input className="input" value={materialForm.unit} onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })} placeholder="Bags, Loads, Boxes" required />
+          </div>
+          <div className="form-group">
+            <label>Unit Cost</label>
+            <input type="number" min="0" className="input" value={materialForm.unitCost} onChange={(e) => setMaterialForm({ ...materialForm, unitCost: e.target.value })} />
+          </div>
+          <div className="form-group">
             <label>Total Value (₹)</label>
             <input type="number" className="input" value={materialForm.totalValue} onChange={(e) => setMaterialForm({ ...materialForm, totalValue: e.target.value })} />
           </div>
+          <div className="form-group">
+            <label>Date Received</label>
+            <input type="date" className="input" value={materialForm.date} onChange={(e) => setMaterialForm({ ...materialForm, date: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label>Remarks</label>
+            <textarea className="input" rows="2" value={materialForm.remarks} onChange={(e) => setMaterialForm({ ...materialForm, remarks: e.target.value })} />
+          </div>
         </form>
+      </Modal>
+
+      {/* Record Material Usage Modal */}
+      <Modal
+        isOpen={isUsageModalOpen}
+        onClose={() => setIsUsageModalOpen(false)}
+        title={`Record Usage — ${selectedUsageItem?.itemName || 'Material'}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsUsageModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleSubmitMaterialUsage} disabled={isSubmittingUsage}>
+              {isSubmittingUsage ? 'Recording...' : 'Record Usage'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSubmitMaterialUsage} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{
+            padding: '12px 14px',
+            backgroundColor: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: '6px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#1E40AF', fontWeight: 600, letterSpacing: '0.05em' }}>CURRENT STOCK BALANCE</div>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#1E3A8A', marginTop: '2px' }}>
+                {selectedUsageItem?.balance} {selectedUsageItem?.unit || ''}
+              </div>
+            </div>
+            <Badge variant="active">In Stock</Badge>
+          </div>
+
+          <div className="form-group">
+            <label>Quantity Used ({selectedUsageItem?.unit || 'Units'}) *</label>
+            <input
+              type="number"
+              step="any"
+              min="0.01"
+              max={selectedUsageItem?.balance || undefined}
+              className="input"
+              value={usageFormData.quantity}
+              onChange={(e) => setUsageFormData({ ...usageFormData, quantity: e.target.value })}
+              placeholder={`e.g. 5 ${selectedUsageItem?.unit || ''}`}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Usage Reason / Location *</label>
+            <input
+              className="input"
+              value={usageFormData.reason}
+              onChange={(e) => setUsageFormData({ ...usageFormData, reason: e.target.value })}
+              placeholder="e.g. 1st floor brick masonry / plastering work"
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Date of Consumption</label>
+            <input
+              type="date"
+              className="input"
+              value={usageFormData.date}
+              onChange={(e) => setUsageFormData({ ...usageFormData, date: e.target.value })}
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Material Transaction History Modal */}
+      <Modal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        title={`Inventory History — ${selectedHistoryItem?.itemName || 'Material'}`}
+        footer={<Button variant="secondary" onClick={() => setIsHistoryModalOpen(false)}>Close</Button>}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '10px 14px',
+            backgroundColor: '#F8FAFC',
+            borderRadius: '6px',
+            border: '1px solid var(--color-border)'
+          }}>
+            <div>
+              <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>Item: </span>
+              <strong>{selectedHistoryItem?.itemName}</strong> ({selectedHistoryItem?.unit || '—'})
+            </div>
+            <div>
+              <span style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>Current Balance: </span>
+              <strong style={{ color: 'var(--color-brand)' }}>{selectedHistoryItem?.balance} {selectedHistoryItem?.unit || ''}</strong>
+            </div>
+          </div>
+
+          <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+            <table className="table" style={{ fontSize: '13px' }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Quantity</th>
+                  <th>Remarks / Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!selectedHistoryItem?.transactions || selectedHistoryItem.transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', color: '#94A3B8', padding: '20px' }}>
+                      No transactions recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  [...selectedHistoryItem.transactions].reverse().map((tx, idx) => (
+                    <tr key={idx}>
+                      <td>{dayjs(tx.date).format('DD MMM YYYY')}</td>
+                      <td>
+                        <Badge variant={tx.type === 'received' ? 'completed' : (tx.type === 'usage' ? 'pending' : 'active')}>
+                          {tx.type.toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td style={{ fontWeight: 600, color: tx.quantity > 0 ? '#16A34A' : '#DC2626' }}>
+                        {tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity} {selectedHistoryItem.unit || ''}
+                      </td>
+                      <td>{tx.remarks || tx.reason || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </Modal>
     </div>
   );

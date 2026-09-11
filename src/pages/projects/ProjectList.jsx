@@ -8,7 +8,13 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
-import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation } from 'lucide-react';
+import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle } from 'lucide-react';
+
+const scheduleBadgeVariant = (status) => ({
+  completed: 'completed', in_progress: 'active', delayed: 'on_hold', on_hold: 'on_hold', not_started: 'upcoming'
+}[status] || 'upcoming');
+
+const scheduleLabel = (status) => (status || 'not_started').replaceAll('_', ' ');
 
 export default function ProjectList() {
   const { projects, fetchProjects, isLoading } = useProjectStore();
@@ -18,6 +24,7 @@ export default function ProjectList() {
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [users, setUsers] = useState([]);
+  const [activeMenuId, setActiveMenuId] = useState(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -43,6 +50,31 @@ export default function ProjectList() {
       api.get('/admin/users').then(res => setUsers(res.data.data)).catch(() => {});
     }
   }, [filter]);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setActiveMenuId(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
+  const handleToggleHold = async (project, e) => {
+    if (e) e.stopPropagation();
+    const isHold = project.status === 'on_hold';
+    const actionText = isHold 
+      ? `resume project "${project.name}" to Ongoing`
+      : `put project "${project.name}" ON HOLD? This will lock all site operations for supervisors`;
+    if (!window.confirm(`Are you sure you want to ${actionText}?`)) {
+      setActiveMenuId(null);
+      return;
+    }
+    try {
+      await api.put(`/projects/${project._id}/hold`);
+      setActiveMenuId(null);
+      fetchProjects(filter);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update project hold status');
+    }
+  };
 
   const handleCreateProject = async (e) => {
     e.preventDefault();
@@ -105,12 +137,128 @@ export default function ProjectList() {
           gap: '20px'
         }}>
           {projects.map((p) => (
-            <Card key={p._id} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'box-shadow 0.2s ease' }}>
+            <Card key={p._id} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'box-shadow 0.2s ease', position: 'relative' }}>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-brand)', letterSpacing: '0.05em' }}>{p.code}</span>
-                  <Badge variant={p.status}>{p.status.replace('_', ' ')}</Badge>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                    <Badge variant={p.status}>{p.status.replace('_', ' ')}</Badge>
+                    {isSuperAdmin() && (
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuId(activeMenuId === p._id ? null : p._id);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#64748B',
+                          }}
+                          title="Admin Actions"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+
+                        {activeMenuId === p._id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: 'absolute',
+                              top: '100%',
+                              right: 0,
+                              marginTop: '4px',
+                              width: '180px',
+                              backgroundColor: '#FFFFFF',
+                              borderRadius: '6px',
+                              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                              border: '1px solid var(--color-border)',
+                              zIndex: 50,
+                              padding: '4px 0',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleHold(p, e)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '8px 12px',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                color: p.status === 'on_hold' ? '#16A34A' : '#D97706',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              {p.status === 'on_hold' ? (
+                                <>
+                                  <PlayCircle size={14} />
+                                  <span>Resume Project</span>
+                                </>
+                              ) : (
+                                <>
+                                  <PauseCircle size={14} />
+                                  <span>Put on Hold</span>
+                                </>
+                              )}
+                            </button>
+
+                            <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: '4px 0' }} />
+
+                            <div
+                              title="Project deletion is currently disabled."
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                fontSize: '13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                color: '#94A3B8',
+                                cursor: 'not-allowed',
+                                userSelect: 'none',
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              <span>Delete (Disabled)</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {p.status === 'on_hold' && (
+                  <div style={{
+                    backgroundColor: '#FEF3C7',
+                    color: '#92400E',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <AlertTriangle size={13} /> PROJECT ON HOLD — Operations locked
+                  </div>
+                )}
 
                 <h3 style={{ fontSize: '18px', marginBottom: '6px' }}>{p.name}</h3>
 
@@ -131,6 +279,26 @@ export default function ProjectList() {
                 <div style={{ fontSize: '12px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '8px', borderTop: '1px solid var(--color-border)' }}>
                   <Calendar size={14} />
                   <span>{p.startDate ? new Date(p.startDate).toLocaleDateString() : 'N/A'} → {p.endDate ? new Date(p.endDate).toLocaleDateString() : 'N/A'} ({p.durationDays || 0}d)</span>
+                </div>
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--color-border)', display: 'grid', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', color: 'var(--color-text-secondary)', marginBottom: '5px' }}>CURRENT STAGE</div>
+                    {p.scheduleSummary?.currentStage ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>{p.scheduleSummary.currentStage.title}</span>
+                        <Badge variant={scheduleBadgeVariant(p.scheduleSummary.currentStage.status)}>{scheduleLabel(p.scheduleSummary.currentStage.status)}</Badge>
+                      </div>
+                    ) : <span className="text-muted" style={{ fontSize: '13px' }}>No schedule activities</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', color: 'var(--color-text-secondary)' }}>SITE EXECUTION</span>
+                    <Badge variant={p.executionSummary?.status === 'ready' ? 'completed' : 'upcoming'}>{p.executionSummary?.status === 'ready' ? 'Ready' : 'In Progress'}</Badge>
+                  </div>
+                  {p.closureSummary?.completed && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#15803D', fontWeight: 700, fontSize: '13px' }}>
+                      <CheckCircle2 size={16} /> Project Completed
+                    </div>
+                  )}
                 </div>
               </div>
 

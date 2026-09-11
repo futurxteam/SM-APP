@@ -678,9 +678,9 @@ tr:hover td {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 24px 20px;
   animation: fadeInOverlay 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   overflow-y: auto;
 }
@@ -709,6 +709,7 @@ tr:hover td {
   animation: scaleUpCard 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   text-align: center;
+  margin: auto 0;
 }
 
 @keyframes scaleUpCard {
@@ -760,5 +761,4 @@ tr:hover td {
     opacity: 0;
   }
 }
-
 
