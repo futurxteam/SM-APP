@@ -60,19 +60,55 @@ export default function SupervisorLocationBanner() {
       const res = await api.get('/location/pending-checkin');
       const data = res.data;
       if (data.success) {
+        // ─── IMPORTANT: Backend runs on UTC. Device may be in a different timezone.
+        // We ALWAYS compute currentSlot and missedSlots from the DEVICE's local time
+        // to avoid timezone bugs (e.g. IST = UTC+5:30, so at 4 PM IST the backend
+        // thinks it is only 10:30 AM UTC and returns wrong slot info).
+
+        const localHour = new Date().getHours();
+        const localCurrentSlot =
+          localHour < 12 ? '9am' :
+          localHour < 15 ? '12pm' :
+          localHour < 18 ? '3pm' : '6pm';
+
+        // Which slots have passed (by device local time)?
+        const slotCutoffs = { '9am': 12, '12pm': 15, '3pm': 18, '6pm': 21 };
+        const allSlots = ['9am', '12pm', '3pm', '6pm'];
+
+        const recordedSlots = data.recordedSlots || [];
+
+        // Slots that have expired (window closed) and were NOT recorded
+        const localMissedSlots = allSlots.filter((s) => {
+          const cutoff = slotCutoffs[s];
+          return localHour >= cutoff && !recordedSlots.includes(s);
+        });
+
+        // The current slot is pending if it hasn't been recorded yet
+        const isCurrentSlotPending = !recordedSlots.includes(localCurrentSlot);
+
+        // Compute slot label for the current active slot
+        const slotLabels = {
+          '9am': 'Morning (9AM) Slot – Location Declaration',
+          '12pm': 'Mid-Day (12PM) Slot – Location Declaration',
+          '3pm': 'Afternoon (3PM) Slot – Location Declaration',
+          '6pm': 'Evening (6PM) Slot – Location Declaration',
+        };
+
         setPendingState({
-          pending: !!data.pending,
-          pendingSlot: data.pendingSlot || null,
-          slotLabel: data.slotLabel || '',
-          currentSlot: data.currentSlot || null,
-          missedSlots: data.missedSlots || [],
-          recordedSlots: data.recordedSlots || [],
+          // Use backend's pending flag only if site coords are missing
+          // Otherwise compute from device local time
+          pending: data.siteCoordinatesMissing ? !!data.pending : isCurrentSlotPending,
+          pendingSlot: isCurrentSlotPending ? localCurrentSlot : null,
+          slotLabel: slotLabels[localCurrentSlot] || data.slotLabel || '',
+          currentSlot: localCurrentSlot,
+          missedSlots: localMissedSlots,
+          recordedSlots,
           siteCoordinatesMissing: !!data.siteCoordinatesMissing,
           project: data.project || null,
         });
 
-        if (data.pendingSlot) {
-          setSelectedSlot(data.pendingSlot);
+        if (isCurrentSlotPending) {
+          setSelectedSlot(localCurrentSlot);
         }
 
         if (data.siteCoordinatesMissing && data.project) {
@@ -118,6 +154,28 @@ export default function SupervisorLocationBanner() {
     if (hour < 15) return '12pm';
     if (hour < 18) return '3pm';
     return '6pm';
+  };
+
+  /**
+   * Returns true only when:
+   *  1. The current slot has NOT been recorded yet (it's pending)
+   *  2. We are within the active 3-hour submission window for that slot
+   *     (9am window: 09:00–11:59, 12pm: 12:00–14:59, 3pm: 15:00–17:59, 6pm: 18:00–19:59)
+   * Outside tracking hours (before 9am or after 8pm) returns false.
+   */
+  const isCurrentSlotStillSubmittable = () => {
+    const hour = new Date().getHours();
+    // Outside tracking period entirely
+    if (hour < 9 || hour >= 20) return false;
+
+    const currentSlot = getCurrentSlotKey();
+    const isRecorded = pendingState.recordedSlots?.includes(currentSlot);
+    if (isRecorded) return false;
+
+    // Slot windows: open at start hour, close at cutoff hour
+    const slotWindow = { '9am': [9, 12], '12pm': [12, 15], '3pm': [15, 18], '6pm': [18, 20] };
+    const [start, end] = slotWindow[currentSlot] || [0, 0];
+    return hour >= start && hour < end;
   };
 
   const getSlotState = (slotKey) => {
@@ -247,8 +305,12 @@ export default function SupervisorLocationBanner() {
 
   const isModalVisible = pendingState.pending || isManualOpen || successResult;
 
-  // Floating Quick Action Button when modal is not open
-  const floatingQuickButton = !isModalVisible && (
+  // Floating Quick Action Button — only visible when:
+  // • modal is not already open, AND
+  // • there is an unrecorded slot that is still within its active submission window
+  const showFloatingButton = !isModalVisible && isCurrentSlotStillSubmittable();
+
+  const floatingQuickButton = showFloatingButton && (
     <div
       style={{
         position: 'fixed',
@@ -287,7 +349,7 @@ export default function SupervisorLocationBanner() {
   );
 
   if (!isModalVisible) {
-    return floatingQuickButton;
+    return floatingQuickButton || null;
   }
 
   return (
@@ -731,20 +793,27 @@ export default function SupervisorLocationBanner() {
                   })}
                 </div>
 
-                {pendingState.missedSlots?.length > 0 && (
-                  <div style={{
-                    marginTop: '10px',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    fontSize: '11px',
-                    color: '#991B1B',
-                    lineHeight: '1.4'
-                  }}>
-                    ⚠️ <strong>Notice:</strong> Old checkpoints that were missed cannot be back-submitted. Only the active time slot can be submitted.
-                  </div>
-                )}
+                {pendingState.missedSlots?.length > 0 && (() => {
+                  const currentKey = getCurrentSlotKey();
+                  const currentSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentKey);
+                  const missedLabels = pendingState.missedSlots
+                    .map(s => DAILY_CHECKPOINTS.find(c => c.slot === s)?.label || s)
+                    .join(', ');
+                  return (
+                    <div style={{
+                      marginTop: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FCA5A5',
+                      fontSize: '11px',
+                      color: '#991B1B',
+                      lineHeight: '1.4'
+                    }}>
+                      ⚠️ <strong>Notice:</strong> Past checkpoint(s) [{missedLabels}] cannot be back-submitted. Only the current <strong>{currentSlotObj?.label || currentKey}</strong> check-in window can be submitted.
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Error Message */}

@@ -443,6 +443,19 @@ tr:hover td {
   }
 }
 
+.kpi-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 768px) {
+  .kpi-grid-6 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+}
+
 .kpi-compact-card {
   padding: 14px;
 }
@@ -508,7 +521,7 @@ tr:hover td {
 /* Map Header & Legend Responsive Layout */
 .map-header-container {
   display: flex;
-  justifyContent: space-between;
+  justify-content: space-between;
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 12px;

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import Card from '../../components/ui/Card';
@@ -107,6 +108,7 @@ export default function ProjectDetail() {
   const [rentedToolPhotoFile, setRentedToolPhotoFile] = useState(null);
   const [sitePhotosFiles, setSitePhotosFiles] = useState([]);
   const [labourPaymentFile, setLabourPaymentFile] = useState(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
     loadProjectData();
@@ -125,6 +127,79 @@ export default function ProjectDetail() {
       console.error('Failed to load project details', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExportFile = async (endpoint, fileName, mimeType = 'application/pdf') => {
+    try {
+      const token = localStorage.getItem('hygge_token');
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+      const directDownloadUrl = `${apiBase}${cleanEndpoint}${cleanEndpoint.includes('?') ? '&' : '?'}token=${encodeURIComponent(token || '')}`;
+
+      // 1. Android APK Native Handling
+      if (Capacitor.isNativePlatform()) {
+        // Option A: Try native AppUpdater downloadPdf plugin method
+        try {
+          const AppUpdater = registerPlugin('AppUpdater');
+          if (AppUpdater && typeof AppUpdater.downloadPdf === 'function') {
+            await AppUpdater.downloadPdf({
+              url: directDownloadUrl,
+              fileName: fileName,
+            });
+            alert(`Download started for "${fileName}"!\n\nPlease check your phone's notification bar and Downloads folder.`);
+            return;
+          }
+        } catch (nativeErr) {
+          console.warn('[Export] Native download method not available in current APK binary:', nativeErr);
+        }
+
+        // Option B: Web Share API (allows saving to Downloads/Drive/WhatsApp)
+        try {
+          const res = await api.get(cleanEndpoint, { responseType: 'blob' });
+          const file = new File([res.data], fileName, { type: mimeType });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: fileName,
+            });
+            return;
+          }
+        } catch (shareErr) {
+          console.warn('[Export] Web Share failed or dismissed:', shareErr);
+        }
+
+        // Option C: Open in external system browser (Chrome) with token parameter
+        window.open(directDownloadUrl, '_system');
+        return;
+      }
+
+      // 2. Standard Web Browser Flow (Desktop / Web Mobile)
+      const res = await api.get(cleanEndpoint, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: mimeType });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 200);
+    } catch (err) {
+      console.error('[Export] Error downloading file:', err);
+      alert(err.response?.data?.message || 'Failed to download export file. Please try again.');
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      await handleExportFile(`/exports/project/${projectId}/pdf`, `Project_Summary_${project?.code || projectId}.pdf`, 'application/pdf');
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
@@ -761,10 +836,16 @@ export default function ProjectDetail() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <a href={`/api/exports/project/${projectId}/pdf`} target="_blank" rel="noreferrer" className="btn btn-outline btn-sm">
-              <Download size={14} />
-              <span>Export PDF Summary</span>
-            </a>
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="btn btn-outline btn-sm"
+              style={{ opacity: isExportingPdf ? 0.7 : 1 }}
+            >
+              {isExportingPdf ? <RefreshCw size={14} className="spin-icon" /> : <Download size={14} />}
+              <span>{isExportingPdf ? 'Generating PDF...' : 'Export PDF Summary'}</span>
+            </button>
           </div>
         </div>
       </Card>
@@ -834,25 +915,65 @@ export default function ProjectDetail() {
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div className="kpi-grid-4">
+          <div className="kpi-grid-6">
             <Card className="kpi-compact-card">
-              <div className="text-muted">Total Direct Purchases</div>
-              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px' }}>₹{(financials?.companyPurchasesTotal || 0).toLocaleString('en-IN')}</div>
+              <div className="text-muted" style={{ fontSize: '12px' }}>Current Status</div>
+              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Badge variant={project.status}>{project.status.replace('_', ' ').toUpperCase()}</Badge>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
+                {project.daysRemaining ? `${project.daysRemaining} days remaining` : 'Active timeline'}
+              </div>
             </Card>
 
             <Card className="kpi-compact-card">
-              <div className="text-muted">Petty Cash Expenses</div>
-              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#D97706' }}>₹{(financials?.pettyCashExpenses || 0).toLocaleString('en-IN')}</div>
+              <div className="text-muted" style={{ fontSize: '12px' }}>Total Project Expenses</div>
+              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: 'var(--color-brand)' }}>
+                ₹{(financials?.grandTotalExpense || 0).toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                Purchases + Petty Cash
+              </div>
             </Card>
 
             <Card className="kpi-compact-card">
-              <div className="text-muted">Petty Cash Balance</div>
-              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#059669' }}>₹{(financials?.pettyCashBalance || 0).toLocaleString('en-IN')}</div>
+              <div className="text-muted" style={{ fontSize: '12px' }}>Petty Cash Left</div>
+              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: (financials?.pettyCashBalance || 0) >= 0 ? '#059669' : '#DC2626' }}>
+                ₹{(financials?.pettyCashBalance || 0).toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                Current balance in hand
+              </div>
             </Card>
 
             <Card className="kpi-compact-card">
-              <div className="text-muted">Grand Total Expense</div>
-              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: 'var(--color-brand)' }}>₹{(financials?.grandTotalExpense || 0).toLocaleString('en-IN')}</div>
+              <div className="text-muted" style={{ fontSize: '12px' }}>Wages Paid</div>
+              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#2563EB' }}>
+                ₹{(financials?.totalWagesPaid || 0).toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize: '11px', color: (financials?.totalWagesPending || 0) > 0 ? '#DC2626' : '#059669', marginTop: '2px' }}>
+                {(financials?.totalWagesPending || 0) > 0 ? `₹${(financials?.totalWagesPending || 0).toLocaleString('en-IN')} pending` : 'All wages cleared'}
+              </div>
+            </Card>
+
+            <Card className="kpi-compact-card">
+              <div className="text-muted" style={{ fontSize: '12px' }}>Total Direct Purchases</div>
+              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1D4ED8' }}>
+                ₹{(financials?.companyPurchasesTotal || 0).toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                Office / Direct vendor
+              </div>
+            </Card>
+
+            <Card className="kpi-compact-card">
+              <div className="text-muted" style={{ fontSize: '12px' }}>Petty Cash Spent</div>
+              <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#D97706' }}>
+                ₹{(financials?.pettyCashExpenses || 0).toLocaleString('en-IN')}
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                From ₹{(financials?.pettyCashCredits || 0).toLocaleString('en-IN')} total received
+              </div>
             </Card>
           </div>
 
@@ -1701,7 +1822,13 @@ export default function ProjectDetail() {
             <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
               <h3>Petty Cash Transaction Ledger</h3>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <a href={`/api/exports/pettycash/${projectId}/excel`} className="btn btn-outline btn-sm">Export Excel</a>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => handleExportFile(`/exports/pettycash/${projectId}/excel`, `PettyCash_${project?.code || projectId}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                >
+                  Export Excel
+                </button>
                 {(isSuperAdmin() || isAccounts()) && (
                   <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
                 )}
@@ -1888,7 +2015,13 @@ export default function ProjectDetail() {
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <a href={`/api/exports/materials/${projectId}/excel`} className="btn btn-outline btn-sm">Export Excel</a>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleExportFile(`/exports/materials/${projectId}/excel`, `Materials_${project?.code || projectId}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                  >
+                    Export Excel
+                  </button>
                   <Button icon={Plus} onClick={() => setIsMaterialModalOpen(true)}>Add Material Item</Button>
                 </div>
               </div>
