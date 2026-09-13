@@ -64,7 +64,7 @@ export default function WorkerMasterPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="mobile-flex-wrap">
         <div>
           <h2>Worker Master Directory</h2>
           <p className="text-muted">Global registry of site workers, skilled labour, and contractors</p>

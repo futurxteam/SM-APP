@@ -1,5 +1,5 @@
 {
-  "name": "hygge-client",
+  "name": "site-management-test-app",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,6 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/geolocation": "^8.2.2",
     "axios": "^1.6.7",
     "chart.js": "^4.4.1",
     "dayjs": "^1.11.10",

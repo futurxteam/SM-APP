@@ -11,7 +11,8 @@ import {
   Building2, Calendar, IndianRupee, Users, ShoppingBag,
   Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download,
   Plus, AlertCircle, CheckCircle, Clock, Upload, Trash2, Edit3, MapPin,
-  Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image
+  Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image,
+  ShieldCheck, ShieldAlert, Crosshair, RefreshCw, Navigation
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
@@ -30,12 +31,6 @@ export default function ProjectDetail() {
   // Module States
   const [attendanceDate, setAttendanceDate] = useState(dayjs().format('YYYY-MM-DD'));
 
-  // Ensure supervisor never accesses location tab
-  useEffect(() => {
-    if (isSiteSupervisor() && activeTab === 'location') {
-      setActiveTab('overview');
-    }
-  }, [activeTab, isSiteSupervisor]);
   const [attendanceData, setAttendanceData] = useState({ entries: [] });
   const [labourSummary, setLabourSummary] = useState([]);
   const [labourSummaryTotals, setLabourSummaryTotals] = useState(null);
@@ -53,7 +48,16 @@ export default function ProjectDetail() {
 
   const [purchases, setPurchases] = useState([]);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
-  const [purchaseForm, setPurchaseForm] = useState({ category: 'Cement', description: '', amount: '', isMaterialPurchase: false, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
+  const [purchaseForm, setPurchaseForm] = useState({
+    category: 'Material',
+    description: '',
+    amount: '',
+    isMaterialPurchase: true,
+    materialName: '',
+    materialUnit: 'Bags',
+    materialQuantity: '',
+    materialUnitCost: ''
+  });
   const [purchaseFile, setPurchaseFile] = useState(null);
 
   const [pettyCash, setPettyCash] = useState(null);
@@ -74,7 +78,16 @@ export default function ProjectDetail() {
   const [materials, setMaterials] = useState(null);
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
-  const [materialForm, setMaterialForm] = useState({ itemName: '', unit: 'bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
+  const [materialForm, setMaterialForm] = useState({
+    itemName: '',
+    source: 'Direct Purchase',
+    unit: 'Bags',
+    quantity: '',
+    unitCost: '',
+    totalValue: '',
+    remarks: '',
+    date: dayjs().format('YYYY-MM-DD')
+  });
   const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
   const [selectedUsageItem, setSelectedUsageItem] = useState(null);
   const [usageFormData, setUsageFormData] = useState({ quantity: '', reason: '', date: dayjs().format('YYYY-MM-DD') });
@@ -326,19 +339,23 @@ export default function ProjectDetail() {
     formData.append('amount', purchaseForm.amount);
     formData.append('isMaterialPurchase', purchaseForm.isMaterialPurchase);
     if (purchaseForm.isMaterialPurchase) {
-      formData.append('materialName', purchaseForm.materialName);
-      formData.append('materialUnit', purchaseForm.materialUnit);
-      formData.append('materialQuantity', purchaseForm.materialQuantity);
-      formData.append('materialUnitCost', purchaseForm.materialUnitCost);
+      formData.append('materialName', purchaseForm.materialName || purchaseForm.category);
+      formData.append('materialUnit', purchaseForm.materialUnit || 'Bags');
+      formData.append('materialQuantity', purchaseForm.materialQuantity || 1);
+      const unitCost = purchaseForm.materialUnitCost || (purchaseForm.materialQuantity ? (Number(purchaseForm.amount) / Number(purchaseForm.materialQuantity)).toFixed(2) : purchaseForm.amount);
+      formData.append('materialUnitCost', unitCost);
     }
     formData.append('invoiceImage', purchaseFile);
 
     try {
       await api.post(`/projects/${projectId}/purchases`, formData);
       setIsPurchaseModalOpen(false);
-      setPurchaseForm({ category: 'Cement', description: '', amount: '', isMaterialPurchase: false, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
+      setPurchaseForm({ category: 'Material', description: '', amount: '', isMaterialPurchase: true, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
       setPurchaseFile(null);
       loadPurchases();
+      loadMaterials();
+      loadProjectData();
+      alert('Direct company purchase recorded successfully! Material inventory updated without affecting petty cash.');
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add purchase');
     }
@@ -485,9 +502,13 @@ export default function ProjectDetail() {
   const handleAddMaterial = async (e) => {
     e.preventDefault();
     try {
-      await api.post(`/projects/${projectId}/materials/items`, materialForm);
+      const payload = {
+        ...materialForm,
+        source: materialForm.source || 'Direct Purchase',
+      };
+      await api.post(`/projects/${projectId}/materials/items`, payload);
       setIsMaterialModalOpen(false);
-      setMaterialForm({ itemName: '', unit: 'bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
+      setMaterialForm({ itemName: '', source: 'Direct Purchase', unit: 'Bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
       loadMaterials();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add material');
@@ -844,7 +865,7 @@ export default function ProjectDetail() {
                   className="btn btn-outline btn-sm"
                   onClick={() => setActiveTab('location')}
                 >
-                  <MapPin size={14} /> View Location Tracking
+                  <MapPin size={14} /> Location & Tracking
                 </button>
               )}
             </div>
@@ -872,8 +893,8 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* TAB: LOCATION & TRACKING */}
-      {activeTab === 'location' && !isSiteSupervisor() && (
+      {/* TAB: LOCATION & TRACKING (Admin & Project Manager Only) */}
+      {!isSiteSupervisor() && activeTab === 'location' && (
         <LocationTrackingTab
           projectId={projectId}
           project={project}
@@ -1487,50 +1508,173 @@ export default function ProjectDetail() {
 
       {/* TAB 3: DIRECT PURCHASES */}
       {activeTab === 'purchases' && (
-        <Card>
-          <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
-            <h3>Direct Company Purchases</h3>
-            {(isSuperAdmin() || isAccounts()) && (
-              <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
-            )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Direct Purchases KPI Breakdown */}
+          {(() => {
+            const totalDirectPurchases = purchases.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+            const materialPurchases = purchases.filter(p => p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+            const otherPurchases = totalDirectPurchases - materialPurchases;
+            const invoicesCount = purchases.length;
+
+            return (
+              <div className="kpi-grid-4">
+                <Card className="kpi-compact-card">
+                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Direct Purchases</div>
+                  <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1E293B' }}>
+                    ₹{totalDirectPurchases.toLocaleString('en-IN')}
+                  </div>
+                </Card>
+
+                <Card className="kpi-compact-card">
+                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Material Purchases</div>
+                  <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#4F46E5' }}>
+                    ₹{materialPurchases.toLocaleString('en-IN')}
+                  </div>
+                </Card>
+
+                <Card className="kpi-compact-card">
+                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Tools, Equipment & Other</div>
+                  <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#0284C7' }}>
+                    ₹{otherPurchases.toLocaleString('en-IN')}
+                  </div>
+                </Card>
+
+                <Card className="kpi-compact-card">
+                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Recorded Invoices</div>
+                  <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#059669' }}>
+                    {invoicesCount} Invoices
+                  </div>
+                </Card>
+              </div>
+            );
+          })()}
+
+          {/* Petty Cash Independence Notice */}
+          <div style={{
+            backgroundColor: '#F0FDF4',
+            border: '1px solid #BBF7D0',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            color: '#166534',
+            fontSize: '13px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <ShieldCheck size={20} color="#16A34A" style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Direct Company Purchases</strong> are processed and settled directly via corporate invoices. 
+              These purchases <strong>do not affect or deduct from the Site Supervisor's Petty Cash balance</strong>. 
+              Material purchases are automatically tracked in the <strong>Materials List</strong> with a <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px' }}>DIRECT PURCHASE</span> label.
+            </div>
           </div>
 
-          <div className="table-scroll-hint"> Swipe horizontally to view all purchase records </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Category</th>
-                  <th>Description</th>
-                  <th>Amount (₹)</th>
-                  <th>Invoice Proof</th>
-                  <th>Recorded By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchases.length === 0 ? (
-                  <tr><td colSpan="6" style={{ textAlign: 'center', color: '#94A3B8' }}>No direct purchases recorded.</td></tr>
-                ) : (
-                  purchases.map(p => (
-                    <tr key={p._id}>
-                      <td>{dayjs(p.date).format('DD-MM-YYYY')}</td>
-                      <td><span className="badge badge-active">{p.category}</span></td>
-                      <td>{p.description || '—'}</td>
-                      <td style={{ fontWeight: 600 }}>₹{p.amount.toLocaleString('en-IN')}</td>
-                      <td>
-                        {p.invoiceImage ? (
-                          <a href={p.invoiceImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)', fontWeight: 500 }}>View Invoice</a>
-                        ) : 'No Proof'}
-                      </td>
-                      <td>{p.addedBy?.name || 'System'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+          <Card>
+            <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Direct Company Purchases Ledger</h3>
+                <p className="text-muted" style={{ fontSize: '12px', margin: '2px 0 0 0' }}>
+                  Direct invoice records, supplier bills, and materials added to site inventory.
+                </p>
+              </div>
+              {(isSuperAdmin() || isAccounts()) && (
+                <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
+              )}
+            </div>
+
+            <div className="table-scroll-hint"> Swipe horizontally to view all purchase records </div>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type / Category</th>
+                    <th>Material Item / Description</th>
+                    <th>Quantity & Rate</th>
+                    <th>Total Amount (₹)</th>
+                    <th>Invoice Proof</th>
+                    <th>Recorded By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchases.length === 0 ? (
+                    <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No direct purchases recorded.</td></tr>
+                  ) : (
+                    purchases.map(p => {
+                      const isMat = p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName;
+                      return (
+                        <tr key={p._id}>
+                          <td>{dayjs(p.date).format('DD-MM-YYYY')}</td>
+                          <td>
+                            <span
+                              className="badge"
+                              style={{
+                                backgroundColor: isMat ? '#EEF2FF' : '#F1F5F9',
+                                color: isMat ? '#4338CA' : '#334155',
+                                border: isMat ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
+                                fontWeight: 600,
+                                fontSize: '11px'
+                              }}
+                            >
+                              {p.category || (isMat ? 'Material' : 'Purchase')}
+                            </span>
+                          </td>
+                          <td>
+                            {p.materialName ? (
+                              <div>
+                                <strong style={{ color: '#1E293B' }}>{p.materialName}</strong>
+                                {p.description && <div style={{ fontSize: '12px', color: '#64748B' }}>{p.description}</div>}
+                              </div>
+                            ) : (
+                              <span>{p.description || '—'}</span>
+                            )}
+                          </td>
+                          <td style={{ fontSize: '13px', color: '#475569' }}>
+                            {p.materialQuantity ? (
+                              <span>
+                                <strong>{p.materialQuantity} {p.materialUnit || 'Units'}</strong>
+                                {p.materialUnitCost && <span style={{ color: '#64748B', fontSize: '11px' }}> (@ ₹{p.materialUnitCost})</span>}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td style={{ fontWeight: 700, color: '#0F172A', fontSize: '14px' }}>
+                            ₹{Number(p.amount).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            {p.invoiceImage ? (
+                              <a
+                                href={p.invoiceImage}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: 'var(--color-brand)',
+                                  fontWeight: 600,
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FileText size={13} /> View Invoice
+                              </a>
+                            ) : (
+                              <span style={{ color: '#94A3B8', fontSize: '12px' }}>No Proof</span>
+                            )}
+                          </td>
+                          <td style={{ fontSize: '13px', color: '#64748B' }}>
+                            {p.addedBy?.name || 'Accounts/System'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* TAB 4: PETTY CASH */}
@@ -1656,74 +1800,184 @@ export default function ProjectDetail() {
 
       {/* TAB 5: MATERIALS LIST */}
       {activeTab === 'materials' && (
-        isMaterialsLoading || !materials ? <LoadingSpinner text="Loading material inventory..." style={{ padding: '48px' }} /> : <Card>
-          <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
-            <h3>Site Material Inventory List</h3>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <a href={`/api/exports/materials/${projectId}/excel`} className="btn btn-outline btn-sm">Export Excel</a>
-              <Button icon={Plus} onClick={() => setIsMaterialModalOpen(true)}>Add Material Item</Button>
-            </div>
-          </div>
+        isMaterialsLoading || !materials ? <LoadingSpinner text="Loading material inventory..." style={{ padding: '48px' }} /> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Materials KPI Summary */}
+            {(() => {
+              const items = materials.items || [];
+              let directPurchaseCount = 0;
+              let directPurchaseVal = 0;
+              let siteStockCount = 0;
+              let siteStockVal = 0;
 
-          <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Item Name</th>
-                  <th>Unit</th>
-                  <th>Received</th>
-                  <th>Used</th>
-                  <th>Balance</th>
-                  <th>Actions</th>
-                  <th>Total Value (₹)</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {materials.items.length === 0 ? (
-                  <tr><td colSpan="5" style={{ textAlign: 'center', color: '#94A3B8' }}>No materials added.</td></tr>
-                ) : (
-                  materials.items.map(m => (
-                    <tr key={m._id}>
-                      <td><strong>{m.itemName}</strong></td>
-                      <td>{m.unit || '—'}</td>
-                      <td>{m.totalReceived}</td>
-                      <td>{m.totalUsed}</td>
-                      <td style={{ fontWeight: 700 }}>{m.balance}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <Button
-                          size="sm"
-                          onClick={() => openMaterialUsageModal(m)}
-                          disabled={project?.status === 'on_hold' && !isSuperAdmin()}
-                        >
-                          Record Usage
-                        </Button>{' '}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openMaterialHistoryModal(m)}
-                        >
-                          History
-                        </Button>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
-                      <td>{m.remarks || '—'}</td>
+              items.forEach(m => {
+                const isDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                const val = Number(m.balanceValue) || Number(m.totalValue) || 0;
+                if (isDirect) {
+                  directPurchaseCount++;
+                  directPurchaseVal += val;
+                } else {
+                  siteStockCount++;
+                  siteStockVal += val;
+                }
+              });
+
+              return (
+                <div className="kpi-grid-4">
+                  <Card className="kpi-compact-card">
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Inventory Value</div>
+                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: 'var(--color-brand)' }}>
+                      ₹{(materials.grandTotal || 0).toLocaleString('en-IN')}
+                    </div>
+                  </Card>
+
+                  <Card className="kpi-compact-card">
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Direct Purchase Stock</div>
+                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#4338CA' }}>
+                      ₹{directPurchaseVal.toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      {directPurchaseCount} Direct Items (No Petty Cash)
+                    </div>
+                  </Card>
+
+                  <Card className="kpi-compact-card">
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Site Stock Value</div>
+                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#059669' }}>
+                      ₹{siteStockVal.toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      {siteStockCount} Site Items
+                    </div>
+                  </Card>
+
+                  <Card className="kpi-compact-card">
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Material Items</div>
+                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1E293B' }}>
+                      {items.length} Items
+                    </div>
+                  </Card>
+                </div>
+              );
+            })()}
+
+            {/* Direct Purchase Distinction Banner */}
+            <div style={{
+              backgroundColor: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              color: '#1E40AF',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <Layers size={20} color="#2563EB" style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Material Inventory & Source Tracking:</strong> Items labeled <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>DIRECT PURCHASE</span> are procured via direct company supplier invoices and <strong>do not affect or deduct from the site's petty cash ledger</strong>.
+              </div>
+            </div>
+
+            <Card>
+              <div className="mobile-flex-wrap" style={{ marginBottom: '16px' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>Site Material Inventory List</h3>
+                  <p className="text-muted" style={{ fontSize: '12px', margin: '2px 0 0 0' }}>
+                    Track all materials received, usage consumption, balance stock, and acquisition origin.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <a href={`/api/exports/materials/${projectId}/excel`} className="btn btn-outline btn-sm">Export Excel</a>
+                  <Button icon={Plus} onClick={() => setIsMaterialModalOpen(true)}>Add Material Item</Button>
+                </div>
+              </div>
+
+              <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Item Name</th>
+                      <th>Source Type</th>
+                      <th>Unit</th>
+                      <th>Received</th>
+                      <th>Used</th>
+                      <th>Balance</th>
+                      <th>Actions</th>
+                      <th>Total Value (₹)</th>
+                      <th>Remarks</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-              {materials.items.length > 0 && (
-                <tfoot>
-                  <tr style={{ fontWeight: 700, backgroundColor: '#F8FAFC' }}>
-                    <td colSpan="3">GRAND TOTAL MATERIAL VALUE</td>
-                    <td colSpan="2" style={{ color: 'var(--color-brand)' }}>₹{(materials.grandTotal || 0).toLocaleString('en-IN')}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+                  </thead>
+                  <tbody>
+                    {materials.items.length === 0 ? (
+                      <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials added.</td></tr>
+                    ) : (
+                      materials.items.map(m => {
+                        const isDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+
+                        return (
+                          <tr key={m._id}>
+                            <td>
+                              <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
+                            </td>
+                            <td>
+                              <span
+                                className="badge"
+                                style={{
+                                  backgroundColor: isDirect ? '#EEF2FF' : '#F8FAFC',
+                                  color: isDirect ? '#4338CA' : '#475569',
+                                  border: isDirect ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
+                                  fontWeight: isDirect ? 700 : 500,
+                                  fontSize: '11px',
+                                  letterSpacing: '0.02em'
+                                }}
+                              >
+                                {isDirect ? 'DIRECT PURCHASE' : 'SITE STOCK'}
+                              </span>
+                            </td>
+                            <td>{m.unit || '—'}</td>
+                            <td style={{ fontWeight: 600 }}>{m.totalReceived}</td>
+                            <td style={{ color: '#DC2626' }}>{m.totalUsed}</td>
+                            <td style={{ fontWeight: 700, color: m.balance > 0 ? '#059669' : '#DC2626' }}>{m.balance}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              <Button
+                                size="sm"
+                                onClick={() => openMaterialUsageModal(m)}
+                                disabled={project?.status === 'on_hold' && !isSuperAdmin()}
+                              >
+                                Record Usage
+                              </Button>{' '}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openMaterialHistoryModal(m)}
+                              >
+                                History
+                              </Button>
+                            </td>
+                            <td style={{ fontWeight: 600, color: '#0F172A' }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
+                            <td style={{ fontSize: '12px', color: '#64748B' }}>
+                              {m.remarks || (isDirect ? 'Direct company purchase' : '—')}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {materials.items.length > 0 && (
+                    <tfoot>
+                      <tr style={{ fontWeight: 700, backgroundColor: '#F8FAFC' }}>
+                        <td colSpan="4">GRAND TOTAL MATERIAL VALUE</td>
+                        <td colSpan="5" style={{ color: 'var(--color-brand)', fontSize: '15px' }}>₹{(materials.grandTotal || 0).toLocaleString('en-IN')}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
           </div>
-        </Card>
+        )
       )}
 
       {/* TAB 6: SITE EXECUTION */}
@@ -2346,24 +2600,186 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Direct Purchase */}
-      <Modal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} title="Add Direct Company Purchase" footer={<Button onClick={handleAddPurchase}>Add Purchase</Button>}>
+      <Modal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} title="Add Direct Company Purchase" footer={<Button onClick={handleAddPurchase}>Add Direct Purchase</Button>}>
         <form onSubmit={handleAddPurchase} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="form-group">
-            <label>Category *</label>
-            <input className="input" value={purchaseForm.category} onChange={(e) => setPurchaseForm({ ...purchaseForm, category: e.target.value })} required />
+          <div style={{
+            padding: '10px 14px',
+            backgroundColor: '#F0FDF4',
+            border: '1px solid #BBF7D0',
+            borderRadius: '6px',
+            color: '#166534',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <ShieldCheck size={16} color="#16A34A" style={{ flexShrink: 0 }} />
+            <div>
+              <strong>Company Invoice Purchase:</strong> This expense is paid directly through corporate accounts and will <strong>not deduct from the site's petty cash balance</strong>.
+            </div>
           </div>
-          <div className="form-group">
-            <label>Amount (₹) *</label>
-            <input type="number" className="input" value={purchaseForm.amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, amount: e.target.value })} required />
+
+          <div className="responsive-grid-2col" style={{ gap: '12px' }}>
+            <div className="form-group">
+              <label>Purchase Category *</label>
+              <select
+                className="input"
+                value={purchaseForm.category}
+                onChange={(e) => {
+                  const cat = e.target.value;
+                  const isMat = !['Tools & Machinery', 'Subcontractor & Services', 'Logistics & Transportation', 'Miscellaneous'].includes(cat);
+                  setPurchaseForm({
+                    ...purchaseForm,
+                    category: cat,
+                    isMaterialPurchase: isMat,
+                    materialName: isMat && !purchaseForm.materialName ? cat : purchaseForm.materialName
+                  });
+                }}
+                required
+              >
+                <option value="Material">Material (General)</option>
+                <option value="Cement">Cement & Aggregates</option>
+                <option value="Steel & Rebar">Steel & Rebar</option>
+                <option value="Sand & Aggregates">Sand & Aggregates</option>
+                <option value="Bricks & Blocks">Bricks & AAC Blocks</option>
+                <option value="Plumbing & Sanitary">Plumbing & Sanitary</option>
+                <option value="Electrical Goods">Electrical Goods</option>
+                <option value="Paint & Chemicals">Paint & Chemicals</option>
+                <option value="Tools & Machinery">Tools & Machinery</option>
+                <option value="Consumables & Safety">Consumables & Safety Gear</option>
+                <option value="Subcontractor & Services">Subcontractor & Services</option>
+                <option value="Logistics & Transportation">Logistics & Transportation</option>
+                <option value="Miscellaneous">Miscellaneous</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Vendor / Supplier Name</label>
+              <input
+                className="input"
+                placeholder="e.g. UltraTech Dealer / ABC Traders"
+                value={purchaseForm.description}
+                onChange={(e) => setPurchaseForm({ ...purchaseForm, description: e.target.value })}
+              />
+            </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600 }}><input type="checkbox" checked={purchaseForm.isMaterialPurchase} onChange={(e) => setPurchaseForm({ ...purchaseForm, isMaterialPurchase: e.target.checked })} /> Add received quantity to Material Inventory</label>
-          {purchaseForm.isMaterialPurchase && <>
-            <div className="form-group"><label>Material Name *</label><input className="input" value={purchaseForm.materialName} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })} required /></div>
-            <div className="responsive-grid-2col" style={{ gap: '12px' }}><div className="form-group"><label>Unit</label><input className="input" value={purchaseForm.materialUnit} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })} /></div><div className="form-group"><label>Quantity Received *</label><input type="number" min="0" className="input" value={purchaseForm.materialQuantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, materialQuantity: e.target.value })} required /></div></div>
-          </>}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#3730A3', backgroundColor: '#EEF2FF', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={purchaseForm.isMaterialPurchase}
+              onChange={(e) => setPurchaseForm({ ...purchaseForm, isMaterialPurchase: e.target.checked })}
+            />
+            Link & Add to Site Material Inventory (Tagged as DIRECT PURCHASE)
+          </label>
+
+          {purchaseForm.isMaterialPurchase && (
+            <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item Name *</label>
+                <input
+                  className="input"
+                  placeholder="e.g. UltraTech 53 Grade Cement / 12mm TMT Steel"
+                  value={purchaseForm.materialName}
+                  onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="responsive-grid-3col" style={{ gap: '10px' }}>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit *</label>
+                  <select
+                    className="input"
+                    value={purchaseForm.materialUnit || 'Bags'}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })}
+                  >
+                    <option value="Bags">Bags</option>
+                    <option value="Tons">Tons</option>
+                    <option value="Kg">Kg</option>
+                    <option value="Liters">Liters</option>
+                    <option value="Sq.Ft">Sq.Ft</option>
+                    <option value="Pieces">Pieces / Nos</option>
+                    <option value="Brass">Brass</option>
+                    <option value="Trips">Trips / Loads</option>
+                    <option value="Meters">Meters</option>
+                    <option value="Units">Units / Boxes</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Quantity Received *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 100"
+                    value={purchaseForm.materialQuantity}
+                    onChange={(e) => {
+                      const qty = e.target.value;
+                      const unitCost = purchaseForm.materialUnitCost;
+                      const amount = qty && unitCost ? (Number(qty) * Number(unitCost)).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({ ...purchaseForm, materialQuantity: qty, amount: amount || purchaseForm.amount });
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit Rate (₹/unit)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 380"
+                    value={purchaseForm.materialUnitCost}
+                    onChange={(e) => {
+                      const rate = e.target.value;
+                      const qty = purchaseForm.materialQuantity;
+                      const amount = qty && rate ? (Number(qty) * Number(rate)).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({ ...purchaseForm, materialUnitCost: rate, amount: amount || purchaseForm.amount });
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="form-group">
-            <label>Invoice File / Photo (REQUIRED) *</label>
-            <input type="file" className="input" onChange={(e) => setPurchaseFile(e.target.files[0])} required />
+            <label>Total Invoice Amount (₹) *</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              className="input"
+              placeholder="e.g. 38000"
+              value={purchaseForm.amount}
+              onChange={(e) => {
+                const amt = e.target.value;
+                const qty = purchaseForm.materialQuantity;
+                const unitRate = amt && qty && Number(qty) > 0 ? (Number(amt) / Number(qty)).toFixed(2) : purchaseForm.materialUnitCost;
+                setPurchaseForm({ ...purchaseForm, amount: amt, materialUnitCost: unitRate });
+              }}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Invoice File / Receipt Photo (REQUIRED) *</label>
+            <input
+              type="file"
+              className="input"
+              accept="image/*,application/pdf"
+              onChange={(e) => setPurchaseFile(e.target.files?.[0] || null)}
+              required
+            />
+            {purchaseFile && (
+              <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
+                ✓ Selected file: <strong>{purchaseFile.name}</strong> ({(purchaseFile.size / 1024).toFixed(1)} KB)
+              </div>
+            )}
           </div>
         </form>
       </Modal>
@@ -2432,35 +2848,125 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Material Modal */}
-      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Material" footer={<Button onClick={handleAddMaterial}>Add Item</Button>}>
+      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Material Item" footer={<Button onClick={handleAddMaterial}>Add Material Item</Button>}>
         <form onSubmit={handleAddMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
+            <label>Acquisition Source / Origin *</label>
+            <select
+              className="input"
+              value={materialForm.source || 'Direct Purchase'}
+              onChange={(e) => setMaterialForm({ ...materialForm, source: e.target.value })}
+            >
+              <option value="Direct Purchase">Direct Purchase (Direct invoice — No Petty Cash deduction)</option>
+              <option value="Site Stock">Site Stock / General Site Entry</option>
+              <option value="Internal Transfer">Internal Transfer from another project</option>
+            </select>
+          </div>
+
+          <div className="form-group">
             <label>Item Name *</label>
-            <input className="input" value={materialForm.itemName} onChange={(e) => setMaterialForm({ ...materialForm, itemName: e.target.value })} required />
+            <input
+              className="input"
+              placeholder="e.g. UltraTech Cement / 16mm TMT Steel"
+              value={materialForm.itemName}
+              onChange={(e) => setMaterialForm({ ...materialForm, itemName: e.target.value })}
+              required
+            />
           </div>
-          <div className="form-group">
-            <label>Quantity *</label>
-            <input type="number" className="input" value={materialForm.quantity} onChange={(e) => setMaterialForm({ ...materialForm, quantity: e.target.value })} required />
+
+          <div className="responsive-grid-2col" style={{ gap: '12px' }}>
+            <div className="form-group">
+              <label>Quantity *</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="input"
+                placeholder="e.g. 50"
+                value={materialForm.quantity}
+                onChange={(e) => {
+                  const qty = e.target.value;
+                  const unitCost = materialForm.unitCost;
+                  const total = qty && unitCost ? (Number(qty) * Number(unitCost)).toFixed(2) : materialForm.totalValue;
+                  setMaterialForm({ ...materialForm, quantity: qty, totalValue: total });
+                }}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Unit *</label>
+              <select
+                className="input"
+                value={materialForm.unit}
+                onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })}
+              >
+                <option value="Bags">Bags</option>
+                <option value="Tons">Tons</option>
+                <option value="Kg">Kg</option>
+                <option value="Liters">Liters</option>
+                <option value="Sq.Ft">Sq.Ft</option>
+                <option value="Pieces">Pieces / Nos</option>
+                <option value="Brass">Brass</option>
+                <option value="Trips">Trips / Loads</option>
+                <option value="Meters">Meters</option>
+                <option value="Units">Units / Boxes</option>
+              </select>
+            </div>
           </div>
-          <div className="form-group">
-            <label>Unit *</label>
-            <input className="input" value={materialForm.unit} onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })} placeholder="Bags, Loads, Boxes" required />
+
+          <div className="responsive-grid-2col" style={{ gap: '12px' }}>
+            <div className="form-group">
+              <label>Unit Cost (₹)</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="input"
+                placeholder="e.g. 400"
+                value={materialForm.unitCost}
+                onChange={(e) => {
+                  const cost = e.target.value;
+                  const qty = materialForm.quantity;
+                  const total = qty && cost ? (Number(qty) * Number(cost)).toFixed(2) : materialForm.totalValue;
+                  setMaterialForm({ ...materialForm, unitCost: cost, totalValue: total });
+                }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Total Value (₹)</label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                className="input"
+                placeholder="e.g. 20000"
+                value={materialForm.totalValue}
+                onChange={(e) => setMaterialForm({ ...materialForm, totalValue: e.target.value })}
+              />
+            </div>
           </div>
-          <div className="form-group">
-            <label>Unit Cost</label>
-            <input type="number" min="0" className="input" value={materialForm.unitCost} onChange={(e) => setMaterialForm({ ...materialForm, unitCost: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label>Total Value (₹)</label>
-            <input type="number" className="input" value={materialForm.totalValue} onChange={(e) => setMaterialForm({ ...materialForm, totalValue: e.target.value })} />
-          </div>
+
           <div className="form-group">
             <label>Date Received</label>
-            <input type="date" className="input" value={materialForm.date} onChange={(e) => setMaterialForm({ ...materialForm, date: e.target.value })} />
+            <input
+              type="date"
+              className="input"
+              value={materialForm.date}
+              onChange={(e) => setMaterialForm({ ...materialForm, date: e.target.value })}
+            />
           </div>
+
           <div className="form-group">
-            <label>Remarks</label>
-            <textarea className="input" rows="2" value={materialForm.remarks} onChange={(e) => setMaterialForm({ ...materialForm, remarks: e.target.value })} />
+            <label>Remarks / Supplier Note</label>
+            <textarea
+              className="input"
+              rows="2"
+              placeholder="e.g. Delivered on site by vendor, verified by supervisor"
+              value={materialForm.remarks}
+              onChange={(e) => setMaterialForm({ ...materialForm, remarks: e.target.value })}
+            />
           </div>
         </form>
       </Modal>

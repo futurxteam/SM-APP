@@ -8,6 +8,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
+import { getCurrentPosition } from '../../services/geolocationService';
 import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle } from 'lucide-react';
 
 const scheduleBadgeVariant = (status) => ({
@@ -99,7 +100,7 @@ export default function ProjectList() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Header & Create Button */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="mobile-flex-wrap">
         <div>
           <h2>Projects</h2>
           <p className="text-muted">Manage site attendance, petty cash, materials, execution & closure</p>
@@ -133,8 +134,8 @@ export default function ProjectList() {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: '20px'
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 280px), 1fr))',
+          gap: '16px'
         }}>
           {projects.map((p) => (
             <Card key={p._id} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'box-shadow 0.2s ease', position: 'relative' }}>
@@ -410,21 +411,19 @@ export default function ProjectList() {
                 type="button"
                 className="btn btn-secondary btn-sm"
                 style={{ fontSize: '11px', padding: '3px 8px' }}
-                onClick={() => {
-                  if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                      pos => {
-                        setFormData(prev => ({
-                          ...prev,
-                          coordinates: {
-                            ...prev.coordinates,
-                            latitude: Number(pos.coords.latitude.toFixed(6)),
-                            longitude: Number(pos.coords.longitude.toFixed(6)),
-                          }
-                        }));
-                      },
-                      err => alert(`GPS error: ${err.message}`)
-                    );
+                onClick={async () => {
+                  try {
+                    const pos = await getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+                    setFormData(prev => ({
+                      ...prev,
+                      coordinates: {
+                        ...prev.coordinates,
+                        latitude: Number(pos.latitude.toFixed(6)),
+                        longitude: Number(pos.longitude.toFixed(6)),
+                      }
+                    }));
+                  } catch (err) {
+                    alert(`GPS error: ${err.message || err}`);
                   }
                 }}
               >

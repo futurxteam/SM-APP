@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import api from '../../services/api';
+import { getCurrentPosition } from '../../services/geolocationService';
 import { MapPin, Navigation, Compass, AlertCircle, ExternalLink } from 'lucide-react';
 
 export default function ProjectCoordinateModal({ isOpen, onClose, project, onSaved }) {
@@ -34,30 +35,22 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
     setError(null);
   }, [project, isOpen]);
 
-  const handleDetectGPS = () => {
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by your browser.');
-      return;
-    }
-
+  const handleDetectGPS = async () => {
     setIsDetecting(true);
     setError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setFormData((prev) => ({
-          ...prev,
-          latitude: Number(pos.coords.latitude.toFixed(6)),
-          longitude: Number(pos.coords.longitude.toFixed(6)),
-        }));
-        setIsDetecting(false);
-      },
-      (err) => {
-        setIsDetecting(false);
-        setError(`Unable to retrieve GPS: ${err.message}. Please verify location permissions.`);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+    try {
+      const pos = await getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      setFormData((prev) => ({
+        ...prev,
+        latitude: Number(pos.latitude.toFixed(6)),
+        longitude: Number(pos.longitude.toFixed(6)),
+      }));
+      setIsDetecting(false);
+    } catch (err) {
+      setIsDetecting(false);
+      setError(err.message || 'Unable to retrieve GPS. Please verify location permissions.');
+    }
   };
 
   const handleSubmit = async (e) => {

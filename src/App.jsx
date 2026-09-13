@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
+import AppUpdater from './services/appUpdater';
 
 import Layout from './components/layout/Layout';
 import Login from './pages/auth/Login';
@@ -25,6 +26,11 @@ const AdminRoute = ({ children }) => {
 };
 
 export default function App() {
+  useEffect(() => {
+    // Check for a new APK once when the app starts.
+    AppUpdater.check();
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
@@ -52,6 +58,7 @@ export default function App() {
               </AdminRoute>
             }
           />
+
           <Route
             path="admin/activity-log"
             element={
@@ -62,7 +69,10 @@ export default function App() {
           />
         </Route>
 
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/dashboard" replace />}
+        />
       </Routes>
     </BrowserRouter>
   );

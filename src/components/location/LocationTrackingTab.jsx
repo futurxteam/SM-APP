@@ -15,17 +15,7 @@ import {
 
 export default function LocationTrackingTab({ projectId, project, onProjectUpdated }) {
   const { isSuperAdmin, isProjectManager, isSiteSupervisor } = useAuthStore();
-  const canManageCoords = isSuperAdmin() || isProjectManager();
-
-  if (isSiteSupervisor()) {
-    return (
-      <Card style={{ padding: '32px', textAlign: 'center' }}>
-        <p style={{ color: '#64748B', fontSize: '14px', margin: 0 }}>
-          Location tracking reports and map analytics are reserved for Project Managers and Administrators.
-        </p>
-      </Card>
-    );
-  }
+  const canManageCoords = isSuperAdmin() || isProjectManager() || isSiteSupervisor();
 
   const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
   const [data, setData] = useState(null);
@@ -34,6 +24,9 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
 
   useEffect(() => {
     loadLocationLogs();
+    const handleUpdate = () => loadLocationLogs();
+    window.addEventListener('hygge:location-updated', handleUpdate);
+    return () => window.removeEventListener('hygge:location-updated', handleUpdate);
   }, [projectId, selectedDate]);
 
   const loadLocationLogs = async () => {
@@ -85,9 +78,9 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', width: '100%' }}>
             {/* Date Filters */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className={`btn btn-sm ${selectedDate === dayjs().format('YYYY-MM-DD') ? 'btn-primary' : 'btn-secondary'}`}
@@ -104,38 +97,40 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
               </button>
               <input
                 type="date"
-                className="form-input"
-                style={{ padding: '6px 10px', fontSize: '13px', width: '150px' }}
+                className="input"
+                style={{ padding: '5px 10px', fontSize: '13px', width: '145px' }}
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
             </div>
 
-            {canManageCoords && (
-              <Button
-                variant="outline"
-                size="sm"
-                icon={Settings}
-                onClick={() => setIsCoordModalOpen(true)}
-              >
-                {siteCoordinates?.latitude ? 'Edit Site Coordinates' : 'Set Site Coordinates'}
-              </Button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+              {canManageCoords && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={Settings}
+                  onClick={() => setIsCoordModalOpen(true)}
+                >
+                  {siteCoordinates?.latitude ? 'Edit Coordinates' : 'Set Coordinates'}
+                </Button>
+              )}
 
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Download}
-              onClick={handleExportCSV}
-            >
-              Export Report
-            </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Download}
+                onClick={handleExportCSV}
+              >
+                Export CSV
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
 
       {/* 2. Site Geofence Summary & KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '12px' }}>
         {/* Project Site Coordinates Card */}
         <Card style={{ borderLeft: '4px solid var(--color-brand)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -258,18 +253,23 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
 
       {/* 3. Side-by-Side 4 Scheduled Checkpoints (9 AM, 12 PM, 3 PM, 6 PM) + Login */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h3 style={{ fontSize: '16px' }}>3-Hour Checkpoint Deviation Reports</h3>
-          <span className="text-muted" style={{ fontSize: '13px' }}>
-            Comparing supervisor's GPS coordinates against project perimeter
-          </span>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '6px',
+          marginBottom: '12px'
+        }}>
+          <div>
+            <h3 style={{ fontSize: '16px', margin: 0 }}>3-Hour Checkpoint Deviation Reports</h3>
+            <span className="text-muted" style={{ fontSize: '12px' }}>
+              Comparing supervisor's GPS coordinates against project perimeter
+            </span>
+          </div>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-          gap: '16px',
-        }}>
+        <div className="responsive-checkpoint-grid">
           {slotsList.map(({ key, label, timeLabel, color }) => {
             const log = checkpoints[key];
             const isRecorded = !!log;
@@ -281,7 +281,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
               if (!isSelectedDateToday) return false;
 
               const hour = dayjs().hour();
-              const cutoffs = { '9am': 12, '12pm': 15, '3pm': 18, '6pm': 20 };
+              const cutoffs = { '9am': 12, '12pm': 15, '3pm': 18, '6pm': 21 };
               return hour >= (cutoffs[key] || 24);
             };
 
@@ -296,10 +296,11 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   gap: '12px',
+                  minWidth: 0,
                 }}
               >
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                     <span style={{ fontWeight: 700, fontSize: '15px', color }}>{label}</span>
                     {isRecorded ? (
                       log.status === 'on_site' ? (
@@ -310,6 +311,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: '4px',
+                          whiteSpace: 'nowrap',
                         }}>
                           🟢 ON SITE
                         </span>
@@ -321,6 +323,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: '4px',
+                          whiteSpace: 'nowrap',
                         }}>
                           🟡 NEAR SITE
                         </span>
@@ -332,6 +335,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: '4px',
+                          whiteSpace: 'nowrap',
                         }}>
                           🔴 OFF SITE
                         </span>
@@ -345,8 +349,9 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                         fontWeight: 700,
                         padding: '2px 8px',
                         borderRadius: '4px',
+                        whiteSpace: 'nowrap',
                       }}>
-                        ❌ MISSED
+                        ❌ NOT SUBMITTED
                       </span>
                     ) : (
                       <span style={{
@@ -357,6 +362,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                         fontWeight: 600,
                         padding: '2px 8px',
                         borderRadius: '4px',
+                        whiteSpace: 'nowrap',
                       }}>
                         ⏱️ DUE / UPCOMING
                       </span>
@@ -377,7 +383,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                       color: '#991B1B',
                       fontSize: '11px',
                     }}>
-                      <strong>Checkpoint Missed:</strong> Supervisor did not submit coordinates within the {timeLabel} window. Expired and cannot be back-submitted.
+                      <strong>Not Submitted:</strong> Supervisor did not record coordinates within the {timeLabel} window. Expired and cannot be back-submitted.
                     </div>
                   )}
 
@@ -422,8 +428,8 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                     </div>
                   ) : (
                     <div style={{
-                      marginTop: '20px',
-                      padding: '16px',
+                      marginTop: '16px',
+                      padding: '14px',
                       textAlign: 'center',
                       backgroundColor: '#F8FAFC',
                       borderRadius: '6px',
@@ -461,33 +467,33 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
 
       {/* 4. Interactive Map */}
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <div className="map-header-container" style={{ marginBottom: '14px' }}>
           <div>
-            <h3 style={{ fontSize: '16px' }}>Site Perimeter & Movement Map</h3>
-            <p className="text-muted" style={{ fontSize: '13px', marginTop: '2px' }}>
+            <h3 style={{ fontSize: '16px', margin: 0 }}>Site Perimeter & Movement Map</h3>
+            <p className="text-muted" style={{ fontSize: '13px', marginTop: '2px', marginBottom: 0 }}>
               Visual geofence circle (blue perimeter) and supervisor checkpoint pins for {selectedDate}.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', fontSize: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#1E3A5F' }} />
+          <div className="map-legend-bar">
+            <div className="map-legend-pill">
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#1E3A5F', flexShrink: 0 }} />
               <span>Project Site</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#0284C7' }} />
+            <div className="map-legend-pill">
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#0284C7', flexShrink: 0 }} />
               <span>9 AM</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#059669' }} />
+            <div className="map-legend-pill">
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#059669', flexShrink: 0 }} />
               <span>12 PM</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#D97706' }} />
+            <div className="map-legend-pill">
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#D97706', flexShrink: 0 }} />
               <span>3 PM</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />
+            <div className="map-legend-pill">
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#7C3AED', flexShrink: 0 }} />
               <span>6 PM</span>
             </div>
           </div>
@@ -496,14 +502,24 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
         <TrackingMap
           siteCoordinates={siteCoordinates}
           checkpoints={checkpoints}
-          height="450px"
+          height="380px"
         />
       </Card>
 
       {/* 5. Detailed Attendance & Location Audit Table */}
       <Card>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h3 style={{ fontSize: '16px' }}>Complete Location Audit Log ({selectedDate})</h3>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '10px',
+          marginBottom: '12px'
+        }}>
+          <div>
+            <h3 style={{ fontSize: '16px', margin: 0 }}>Complete Location Audit Log</h3>
+            <span className="text-muted" style={{ fontSize: '12px' }}>Logs for {selectedDate}</span>
+          </div>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -518,94 +534,101 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
             No supervisor location check-ins recorded on {selectedDate}.
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Time Recorded</th>
-                  <th>Checkpoint Slot</th>
-                  <th>Supervisor</th>
-                  <th>Coordinates</th>
-                  <th>Distance from Center</th>
-                  <th>Deviation / Off Site Report</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.allLogs.map((log) => (
-                  <tr key={log._id}>
-                    <td>{dayjs(log.timeRecorded).format('hh:mm A')}</td>
-                    <td>
-                      <strong style={{ textTransform: 'uppercase', color: 'var(--color-brand)' }}>
-                        {log.slot}
-                      </strong>
-                    </td>
-                    <td>{log.supervisor?.name || 'Supervisor'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                      {log.latitude.toFixed(5)}, {log.longitude.toFixed(5)}
-                    </td>
-                    <td>
-                      {log.distanceFromSiteMeters != null ? `${log.distanceFromSiteMeters} m` : 'N/A'}
-                    </td>
-                    <td style={{
-                      fontWeight: 600,
-                      color: log.status === 'on_site' ? '#059669' : '#DC2626',
-                    }}>
-                      {log.deviationFormatted}
-                    </td>
-                    <td>
-                      {log.status === 'on_site' ? (
-                        <span style={{
-                          backgroundColor: '#ECFDF5',
-                          color: '#059669',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                        }}>
-                          ON SITE
-                        </span>
-                      ) : log.status === 'near_site' ? (
-                        <span style={{
-                          backgroundColor: '#FFFBEB',
-                          color: '#D97706',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                        }}>
-                          NEAR SITE
-                        </span>
-                      ) : (
-                        <span style={{
-                          backgroundColor: '#FEF2F2',
-                          color: '#DC2626',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                        }}>
-                          OFF SITE
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      <a
-                        href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn btn-sm btn-outline"
-                        style={{ padding: '3px 8px', fontSize: '12px' }}
-                      >
-                        <ExternalLink size={12} /> Map
-                      </a>
-                    </td>
+          <>
+            <div className="table-scroll-hint">← Scroll horizontally to view full audit logs →</div>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time Recorded</th>
+                    <th>Slot</th>
+                    <th>Supervisor</th>
+                    <th>Coordinates</th>
+                    <th>Distance</th>
+                    <th>Deviation Report</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.allLogs.map((log) => (
+                    <tr key={log._id}>
+                      <td>{dayjs(log.timeRecorded).format('hh:mm A')}</td>
+                      <td>
+                        <strong style={{ textTransform: 'uppercase', color: 'var(--color-brand)' }}>
+                          {log.slot}
+                        </strong>
+                      </td>
+                      <td>{log.supervisor?.name || 'Supervisor'}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        {log.latitude.toFixed(5)}, {log.longitude.toFixed(5)}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {log.distanceFromSiteMeters != null ? `${log.distanceFromSiteMeters} m` : 'N/A'}
+                      </td>
+                      <td style={{
+                        fontWeight: 600,
+                        color: log.status === 'on_site' ? '#059669' : '#DC2626',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {log.deviationFormatted}
+                      </td>
+                      <td>
+                        {log.status === 'on_site' ? (
+                          <span style={{
+                            backgroundColor: '#ECFDF5',
+                            color: '#059669',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            ON SITE
+                          </span>
+                        ) : log.status === 'near_site' ? (
+                          <span style={{
+                            backgroundColor: '#FFFBEB',
+                            color: '#D97706',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            NEAR SITE
+                          </span>
+                        ) : (
+                          <span style={{
+                            backgroundColor: '#FEF2F2',
+                            color: '#DC2626',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            OFF SITE
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <a
+                          href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-sm btn-outline"
+                          style={{ padding: '3px 8px', fontSize: '12px' }}
+                        >
+                          <ExternalLink size={12} /> Map
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Card>
 

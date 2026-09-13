@@ -174,12 +174,28 @@ export default function TrackingMap({ siteCoordinates, checkpoints = {}, height 
     // Auto fit bounds to encompass all pins
     if (validPoints.length > 1) {
       const bounds = L.latLngBounds(validPoints);
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
     } else if (validPoints.length === 1) {
       map.setView(validPoints[0], 16);
     }
 
+    // Crucial for mobile: invalidate map size after DOM settles
+    const timer = setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 250);
+
+    const handleResize = () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
     return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
