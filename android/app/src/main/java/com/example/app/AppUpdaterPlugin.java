@@ -197,4 +197,40 @@ public class AppUpdaterPlugin extends Plugin {
 
         }).start();
     }
+
+    @PluginMethod
+    public void downloadPdf(PluginCall call) {
+        String downloadUrl = call.getString("url");
+        String fileName = call.getString("fileName");
+        if (fileName == null || fileName.isEmpty()) {
+            fileName = "Project_Summary.pdf";
+        }
+        if (downloadUrl == null || downloadUrl.isEmpty()) {
+            call.reject("Download URL is missing");
+            return;
+        }
+
+        try {
+            android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(downloadUrl));
+            request.setTitle(fileName);
+            request.setDescription("Downloading Project Summary PDF");
+            request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
+            request.setMimeType("application/pdf");
+
+            android.app.DownloadManager manager = (android.app.DownloadManager) getContext().getSystemService(android.content.Context.DOWNLOAD_SERVICE);
+            if (manager != null) {
+                long downloadId = manager.enqueue(request);
+                JSObject ret = new JSObject();
+                ret.put("success", true);
+                ret.put("downloadId", downloadId);
+                ret.put("message", "Download started");
+                call.resolve(ret);
+            } else {
+                call.reject("DownloadManager service not available");
+            }
+        } catch (Exception e) {
+            call.reject("Native download failed: " + e.getMessage());
+        }
+    }
 }
