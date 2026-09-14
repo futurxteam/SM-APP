@@ -376,13 +376,7 @@ export default function ProjectList() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="form-group">
-              <label>Project Manager</label>
-              <select className="input" value={formData.assignedManager} onChange={(e) => setFormData({ ...formData, assignedManager: e.target.value })}>
-                <option value="">Unassigned</option>
-                {projectManagers.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
-              </select>
-            </div>
+           
 
             <div className="form-group">
               <label>Site Supervisor</label>

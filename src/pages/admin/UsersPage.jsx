@@ -211,8 +211,7 @@ export default function UsersPage() {
               <label>Role *</label>
               <select className="input" value={newUserForm.role} onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}>
                 <option value="site_supervisor">Site Supervisor</option>
-                <option value="project_manager">Project Manager</option>
-                <option value="accounts">Accounts / Finance</option>
+                
                 <option value="super_admin">Super Admin</option>
               </select>
             </div>
