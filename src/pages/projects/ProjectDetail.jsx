@@ -54,6 +54,8 @@ export default function ProjectDetail() {
     description: '',
     amount: '',
     isMaterialPurchase: true,
+    selectedItemId: '',
+    isNewMaterial: false,
     materialName: '',
     materialUnit: 'Bags',
     materialQuantity: '',
@@ -68,7 +70,19 @@ export default function ProjectDetail() {
   const [isPettyCashLoading, setIsPettyCashLoading] = useState(false);
   const [refillRequests, setRefillRequests] = useState([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-  const [expenseForm, setExpenseForm] = useState({ category: 'fuel', customCategoryName: '', description: '', amount: '' });
+  const [expenseForm, setExpenseForm] = useState({
+    category: 'fuel',
+    customCategoryName: '',
+    description: '',
+    amount: '',
+    isMaterialPurchase: false,
+    selectedItemId: '',
+    isNewMaterial: false,
+    materialName: '',
+    materialUnit: 'Bags',
+    materialQuantity: '',
+    materialUnitCost: ''
+  });
   const [expenseFile, setExpenseFile] = useState(null);
 
   const [isRefillModalOpen, setIsRefillModalOpen] = useState(false);
@@ -80,8 +94,10 @@ export default function ProjectDetail() {
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
   const [materialForm, setMaterialForm] = useState({
+    selectedItemId: '',
+    isNewMaterial: false,
     itemName: '',
-    source: 'Direct Purchase',
+    source: 'site_stock',
     unit: 'Bags',
     quantity: '',
     unitCost: '',
@@ -414,6 +430,9 @@ export default function ProjectDetail() {
     formData.append('amount', purchaseForm.amount);
     formData.append('isMaterialPurchase', purchaseForm.isMaterialPurchase);
     if (purchaseForm.isMaterialPurchase) {
+      if (purchaseForm.selectedItemId) {
+        formData.append('selectedItemId', purchaseForm.selectedItemId);
+      }
       formData.append('materialName', purchaseForm.materialName || purchaseForm.category);
       formData.append('materialUnit', purchaseForm.materialUnit || 'Bags');
       formData.append('materialQuantity', purchaseForm.materialQuantity || 1);
@@ -425,13 +444,25 @@ export default function ProjectDetail() {
     try {
       await api.post(`/projects/${projectId}/purchases`, formData);
       setIsPurchaseModalOpen(false);
-      setPurchaseForm({ category: 'Material', description: '', amount: '', isMaterialPurchase: true, materialName: '', materialUnit: 'Bags', materialQuantity: '', materialUnitCost: '' });
+      setPurchaseForm({
+        category: 'Material',
+        description: '',
+        amount: '',
+        isMaterialPurchase: true,
+        selectedItemId: '',
+        isNewMaterial: false,
+        materialName: '',
+        materialUnit: 'Bags',
+        materialQuantity: '',
+        materialUnitCost: ''
+      });
       setPurchaseFile(null);
       loadPurchases();
       loadMaterials();
       loadProjectData();
       alert('Direct company purchase recorded successfully! Material inventory updated without affecting petty cash.');
     } catch (err) {
+      console.error('Failed to add direct purchase:', err.response?.data || err);
       alert(err.response?.data?.message || 'Failed to add purchase');
     }
   };
@@ -469,19 +500,55 @@ export default function ProjectDetail() {
       alert('Receipt image is mandatory for petty cash expenses!');
       return;
     }
+
+    const isMat = expenseForm.category === 'material' || expenseForm.isMaterialPurchase;
+    if (isMat && !expenseForm.selectedItemId && (!expenseForm.materialName?.trim() || !expenseForm.materialQuantity || Number(expenseForm.materialQuantity) <= 0)) {
+      alert('Please enter a material name and a valid quantity.');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('category', expenseForm.category);
     formData.append('customCategoryName', expenseForm.customCategoryName);
     formData.append('description', expenseForm.description);
     formData.append('amount', expenseForm.amount);
     formData.append('receiptImage', expenseFile);
+    if (isMat) {
+      formData.append('isMaterialPurchase', 'true');
+      if (expenseForm.selectedItemId) {
+        formData.append('selectedItemId', expenseForm.selectedItemId);
+      }
+      formData.append('materialName', expenseForm.materialName.trim());
+      formData.append('materialUnit', expenseForm.materialUnit || 'Bags');
+      formData.append('materialQuantity', expenseForm.materialQuantity);
+      if (expenseForm.materialUnitCost) {
+        formData.append('materialUnitCost', expenseForm.materialUnitCost);
+      }
+    }
 
     try {
       await api.post(`/projects/${projectId}/pettycash/expenses`, formData);
       setIsExpenseModalOpen(false);
-      setExpenseForm({ category: 'fuel', customCategoryName: '', description: '', amount: '' });
+      setExpenseForm({
+        category: 'fuel',
+        customCategoryName: '',
+        description: '',
+        amount: '',
+        isMaterialPurchase: false,
+        selectedItemId: '',
+        isNewMaterial: false,
+        materialName: '',
+        materialUnit: 'Bags',
+        materialQuantity: '',
+        materialUnitCost: ''
+      });
       setExpenseFile(null);
       loadPettyCash();
+      loadProjectData();
+      if (isMat) {
+        loadMaterials();
+        loadProjectData();
+      }
     } catch (err) {
       if (err.response?.status === 402) {
         setIsExpenseModalOpen(false);
@@ -576,14 +643,19 @@ export default function ProjectDetail() {
 
   const handleAddMaterial = async (e) => {
     e.preventDefault();
+    // Validate: must have either an existing item selected OR new item name
+    if (!materialForm.selectedItemId && !materialForm.itemName?.trim()) {
+      alert('Please select an existing material from the dropdown, or choose "+ Register New Material Item" and enter a name.');
+      return;
+    }
     try {
       const payload = {
         ...materialForm,
-        source: materialForm.source || 'Direct Purchase',
+        source: materialForm.source || 'site_stock',
       };
       await api.post(`/projects/${projectId}/materials/items`, payload);
       setIsMaterialModalOpen(false);
-      setMaterialForm({ itemName: '', source: 'Direct Purchase', unit: 'Bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
+      setMaterialForm({ selectedItemId: '', isNewMaterial: false, itemName: '', source: 'site_stock', unit: 'Bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
       loadMaterials();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add material');
@@ -1934,18 +2006,38 @@ export default function ProjectDetail() {
               const items = materials.items || [];
               let directPurchaseCount = 0;
               let directPurchaseVal = 0;
+              let pettyCashCount = 0;
+              let pettyCashVal = 0;
               let siteStockCount = 0;
               let siteStockVal = 0;
 
               items.forEach(m => {
-                const isDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
-                const val = Number(m.balanceValue) || Number(m.totalValue) || 0;
-                if (isDirect) {
-                  directPurchaseCount++;
-                  directPurchaseVal += val;
+                const txs = (m.transactions || []).filter(tx => tx.quantity > 0 || tx.type === 'receipt' || tx.type === 'purchase');
+                if (txs.length > 0) {
+                  txs.forEach(tx => {
+                    const src = tx.source || (m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice') ? 'direct_purchase' : 'site_stock');
+                    const val = Number(tx.totalValue) || (Number(tx.quantity) * (Number(tx.unitCost) || Number(m.unitCost) || 0));
+                    if (src === 'direct_purchase') {
+                      directPurchaseCount++;
+                      directPurchaseVal += val;
+                    } else if (src === 'petty_cash') {
+                      pettyCashCount++;
+                      pettyCashVal += val;
+                    } else {
+                      siteStockCount++;
+                      siteStockVal += val;
+                    }
+                  });
                 } else {
-                  siteStockCount++;
-                  siteStockVal += val;
+                  const isDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                  const val = Number(m.balanceValue) || Number(m.totalValue) || 0;
+                  if (isDirect) {
+                    directPurchaseCount++;
+                    directPurchaseVal += val;
+                  } else {
+                    siteStockCount++;
+                    siteStockVal += val;
+                  }
                 }
               });
 
@@ -1956,6 +2048,9 @@ export default function ProjectDetail() {
                     <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: 'var(--color-brand)' }}>
                       ₹{(materials.grandTotal || 0).toLocaleString('en-IN')}
                     </div>
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      {items.length} Total Inventory Items
+                    </div>
                   </Card>
 
                   <Card className="kpi-compact-card">
@@ -1964,7 +2059,17 @@ export default function ProjectDetail() {
                       ₹{directPurchaseVal.toLocaleString('en-IN')}
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
-                      {directPurchaseCount} Direct Items (No Petty Cash)
+                      {directPurchaseCount} Direct Invoices (No Petty Cash)
+                    </div>
+                  </Card>
+
+                  <Card className="kpi-compact-card">
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Petty Cash Purchases</div>
+                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#D97706' }}>
+                      ₹{pettyCashVal.toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                      {pettyCashCount} Petty Cash Purchases
                     </div>
                   </Card>
 
@@ -1974,14 +2079,7 @@ export default function ProjectDetail() {
                       ₹{siteStockVal.toLocaleString('en-IN')}
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
-                      {siteStockCount} Site Items
-                    </div>
-                  </Card>
-
-                  <Card className="kpi-compact-card">
-                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Material Items</div>
-                    <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1E293B' }}>
-                      {items.length} Items
+                      {siteStockCount} Site Stock Receipts
                     </div>
                   </Card>
                 </div>
@@ -2022,8 +2120,37 @@ export default function ProjectDetail() {
                   >
                     Export Excel
                   </button>
-                  <Button icon={Plus} onClick={() => setIsMaterialModalOpen(true)}>Add Material Item</Button>
-                </div>
+{isSiteSupervisor() ? (
+  <Button
+    icon={Plus}
+    onClick={() => {
+      setExpenseForm({
+        category: 'material',
+        customCategoryName: '',
+        description: '',
+        amount: '',
+        isMaterialPurchase: true,
+        selectedItemId: '',
+        isNewMaterial: false,
+        materialName: '',
+        materialUnit: 'Bags',
+        materialQuantity: '',
+        materialUnitCost: ''
+      });
+      setExpenseFile(null);
+      setIsExpenseModalOpen(true);
+    }}
+  >
+    Material Need – Petty Cash
+  </Button>
+) : (
+  <Button
+    icon={Plus}
+    onClick={() => setIsMaterialModalOpen(true)}
+  >
+    Add Material Item
+  </Button>
+)}                </div>
               </div>
 
               <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
@@ -2047,7 +2174,11 @@ export default function ProjectDetail() {
                       <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials added.</td></tr>
                     ) : (
                       materials.items.map(m => {
-                        const isDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                        const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
+                        if (sources.length === 0) {
+                          const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                          sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
+                        }
 
                         return (
                           <tr key={m._id}>
@@ -2055,19 +2186,62 @@ export default function ProjectDetail() {
                               <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
                             </td>
                             <td>
-                              <span
-                                className="badge"
-                                style={{
-                                  backgroundColor: isDirect ? '#EEF2FF' : '#F8FAFC',
-                                  color: isDirect ? '#4338CA' : '#475569',
-                                  border: isDirect ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
-                                  fontWeight: isDirect ? 700 : 500,
-                                  fontSize: '11px',
-                                  letterSpacing: '0.02em'
-                                }}
-                              >
-                                {isDirect ? 'DIRECT PURCHASE' : 'SITE STOCK'}
-                              </span>
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                {sources.map(src => {
+                                  if (src === 'direct_purchase') {
+                                    return (
+                                      <span
+                                        key="direct"
+                                        className="badge"
+                                        style={{
+                                          backgroundColor: '#EEF2FF',
+                                          color: '#4338CA',
+                                          border: '1px solid #C7D2FE',
+                                          fontWeight: 700,
+                                          fontSize: '11px',
+                                          letterSpacing: '0.02em'
+                                        }}
+                                      >
+                                        DIRECT PURCHASE
+                                      </span>
+                                    );
+                                  }
+                                  if (src === 'petty_cash') {
+                                    return (
+                                      <span
+                                        key="petty"
+                                        className="badge"
+                                        style={{
+                                          backgroundColor: '#FEF3C7',
+                                          color: '#B45309',
+                                          border: '1px solid #FDE68A',
+                                          fontWeight: 700,
+                                          fontSize: '11px',
+                                          letterSpacing: '0.02em'
+                                        }}
+                                      >
+                                        PETTY CASH
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span
+                                      key="site"
+                                      className="badge"
+                                      style={{
+                                        backgroundColor: '#F1F5F9',
+                                        color: '#475569',
+                                        border: '1px solid #E2E8F0',
+                                        fontWeight: 600,
+                                        fontSize: '11px',
+                                        letterSpacing: '0.02em'
+                                      }}
+                                    >
+                                      SITE STOCK
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </td>
                             <td>{m.unit || '—'}</td>
                             <td style={{ fontWeight: 600 }}>{m.totalReceived}</td>
@@ -2091,7 +2265,7 @@ export default function ProjectDetail() {
                             </td>
                             <td style={{ fontWeight: 600, color: '#0F172A' }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
                             <td style={{ fontSize: '12px', color: '#64748B' }}>
-                              {m.remarks || (isDirect ? 'Direct company purchase' : '—')}
+                              {m.remarks || (sources.includes('direct_purchase') ? 'Direct company purchase' : (sources.includes('petty_cash') ? 'Petty cash purchase' : '—'))}
                             </td>
                           </tr>
                         );
@@ -2808,16 +2982,64 @@ export default function ProjectDetail() {
 
           {purchaseForm.isMaterialPurchase && (
             <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* ── Material Selector ── */}
               <div className="form-group">
-                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item Name *</label>
-                <input
+                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item *</label>
+                <select
                   className="input"
-                  placeholder="e.g. UltraTech 53 Grade Cement / 12mm TMT Steel"
-                  value={purchaseForm.materialName}
-                  onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })}
-                  required
-                />
+                  value={purchaseForm.selectedItemId || (purchaseForm.isNewMaterial ? '__new__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__new__') {
+                      setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: true, materialName: '', materialUnit: 'Bags' });
+                    } else if (val === '') {
+                      setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
+                    } else {
+                      const item = (materials?.items || []).find(i => i._id === val);
+                      setPurchaseForm({ ...purchaseForm, selectedItemId: val, isNewMaterial: false, materialName: item?.itemName || '', materialUnit: item?.unit || 'Bags' });
+                    }
+                  }}
+                >
+                  <option value="">— Select existing item to restock —</option>
+                  {(materials?.items || []).map(item => (
+                    <option key={item._id} value={item._id}>
+                      {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                    </option>
+                  ))}
+                  <option value="__new__">+ Register New Material Item</option>
+                </select>
               </div>
+
+              {/* Restock info banner */}
+              {purchaseForm.selectedItemId && (() => {
+                const sel = (materials?.items || []).find(i => i._id === purchaseForm.selectedItemId);
+                return sel ? (
+                  <div style={{ padding: '8px 12px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', fontSize: '12px', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ℹ️ <span>Restocking <strong>{sel.itemName}</strong> — Current stock: <strong>{sel.balance ?? 0} {sel.unit || ''}</strong>. This quantity will be added to the existing balance.</span>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* New material name input + duplicate warning */}
+              {purchaseForm.isNewMaterial && (
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>New Material Name *</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. UltraTech 53 Grade Cement / 12mm TMT Steel"
+                    value={purchaseForm.materialName}
+                    onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })}
+                    required
+                  />
+                  {purchaseForm.materialName?.trim() && (materials?.items || []).some(
+                    i => i.itemName.toLowerCase() === purchaseForm.materialName.trim().toLowerCase()
+                  ) && (
+                    <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                      ⚠️ <strong>"{purchaseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="responsive-grid-3col" style={{ gap: '10px' }}>
                 <div className="form-group">
@@ -2825,7 +3047,9 @@ export default function ProjectDetail() {
                   <select
                     className="input"
                     value={purchaseForm.materialUnit || 'Bags'}
+                    disabled={!!purchaseForm.selectedItemId}
                     onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })}
+                    style={purchaseForm.selectedItemId ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
                   >
                     <option value="Bags">Bags</option>
                     <option value="Tons">Tons</option>
@@ -2922,7 +3146,18 @@ export default function ProjectDetail() {
         <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Category *</label>
-            <select className="input" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}>
+            <select
+              className="input"
+              value={expenseForm.category}
+              onChange={(e) => {
+                const cat = e.target.value;
+                setExpenseForm({
+                  ...expenseForm,
+                  category: cat,
+                  isMaterialPurchase: cat === 'material' ? true : expenseForm.isMaterialPurchase
+                });
+              }}
+            >
               <option value="material">Material charges</option>
               <option value="transportation">Transportation charges</option>
               <option value="labour">Labour charges</option>
@@ -2944,8 +3179,167 @@ export default function ProjectDetail() {
           )}
 
           <div className="form-group">
+            <label>Description / Purpose</label>
+            <input
+              className="input"
+              placeholder="e.g. Bought emergency binding wire from local hardware"
+              value={expenseForm.description}
+              onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+            />
+          </div>
+
+          {(expenseForm.category === 'material' || expenseForm.isMaterialPurchase) && (
+            <div style={{
+              backgroundColor: '#FEF3C7',
+              border: '1px solid #FCD34D',
+              borderRadius: '8px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400E' }}>
+                📦 Track in Material Inventory (Petty Cash Sourced)
+              </div>
+
+              {/* ── Material Selector ── */}
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item *</label>
+                <select
+                  className="input"
+                  value={expenseForm.selectedItemId || (expenseForm.isNewMaterial ? '__new__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__new__') {
+                      setExpenseForm({ ...expenseForm, selectedItemId: '', isNewMaterial: true, materialName: '', materialUnit: 'Bags' });
+                    } else if (val === '') {
+                      setExpenseForm({ ...expenseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
+                    } else {
+                      const item = (materials?.items || []).find(i => i._id === val);
+                      setExpenseForm({ ...expenseForm, selectedItemId: val, isNewMaterial: false, materialName: item?.itemName || '', materialUnit: item?.unit || 'Bags' });
+                    }
+                  }}
+                >
+                  <option value="">— Select existing item to restock —</option>
+                  {(materials?.items || []).map(item => (
+                    <option key={item._id} value={item._id}>
+                      {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                    </option>
+                  ))}
+                  <option value="__new__">+ Register New Material Item</option>
+                </select>
+              </div>
+
+              {/* Restock info banner */}
+              {expenseForm.selectedItemId && (() => {
+                const sel = (materials?.items || []).find(i => i._id === expenseForm.selectedItemId);
+                return sel ? (
+                  <div style={{ padding: '8px 12px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', fontSize: '12px', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ℹ️ <span>Restocking <strong>{sel.itemName}</strong> — Current stock: <strong>{sel.balance ?? 0} {sel.unit || ''}</strong>. This quantity will be added to the existing balance.</span>
+                  </div>
+                ) : null;
+              })()}
+
+              {/* New material name input + duplicate warning */}
+              {expenseForm.isNewMaterial && (
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>New Material Name *</label>
+                  <input
+                    className="input"
+                    placeholder="e.g. Binding Wire / PVC Pipes / Sand"
+                    value={expenseForm.materialName}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, materialName: e.target.value })}
+                    required
+                  />
+                  {expenseForm.materialName?.trim() && (materials?.items || []).some(
+                    i => i.itemName.toLowerCase() === expenseForm.materialName.trim().toLowerCase()
+                  ) && (
+                    <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                      ⚠️ <strong>"{expenseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="responsive-grid-3col" style={{ gap: '8px' }}>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit</label>
+                  <select
+                    className="input"
+                    value={expenseForm.materialUnit}
+                    disabled={!!expenseForm.selectedItemId}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, materialUnit: e.target.value })}
+                    style={expenseForm.selectedItemId ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
+                  >
+                    <option value="Bags">Bags</option>
+                    <option value="Kg">Kg</option>
+                    <option value="Tons">Tons</option>
+                    <option value="Pieces">Pieces / Nos</option>
+                    <option value="Liters">Liters</option>
+                    <option value="Sq.Ft">Sq.Ft</option>
+                    <option value="Brass">Brass</option>
+                    <option value="Trips">Trips / Loads</option>
+                    <option value="Meters">Meters</option>
+                    <option value="Units">Units / Boxes</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Qty Received *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 5"
+                    value={expenseForm.materialQuantity}
+                    onChange={(e) => {
+                      const qty = e.target.value;
+                      const unitCost = expenseForm.materialUnitCost;
+                      const amount = qty && unitCost ? (Number(qty) * Number(unitCost)).toFixed(2) : expenseForm.amount;
+                      setExpenseForm({ ...expenseForm, materialQuantity: qty, amount: amount || expenseForm.amount });
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit Rate (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 150"
+                    value={expenseForm.materialUnitCost}
+                    onChange={(e) => {
+                      const rate = e.target.value;
+                      const qty = expenseForm.materialQuantity;
+                      const amount = qty && rate ? (Number(qty) * Number(rate)).toFixed(2) : expenseForm.amount;
+                      setExpenseForm({ ...expenseForm, materialUnitCost: rate, amount: amount || expenseForm.amount });
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
             <label>Amount (₹) *</label>
-            <input type="number" className="input" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} required />
+            <input
+              type="number"
+              min="0"
+              step="any"
+              className="input"
+              value={expenseForm.amount}
+              onChange={(e) => {
+                const amt = e.target.value;
+                const qty = expenseForm.materialQuantity;
+                const unitRate = amt && qty && Number(qty) > 0 ? (Number(amt) / Number(qty)).toFixed(2) : expenseForm.materialUnitCost;
+                setExpenseForm({ ...expenseForm, amount: amt, materialUnitCost: unitRate });
+              }}
+              required
+            />
           </div>
 
           <div className="form-group">
@@ -2981,31 +3375,78 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Material Modal */}
-      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Material Item" footer={<Button onClick={handleAddMaterial}>Add Material Item</Button>}>
+      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Stock Material Item" footer={<Button onClick={handleAddMaterial}>Add Material Item</Button>}>
         <form onSubmit={handleAddMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Acquisition Source / Origin *</label>
             <select
               className="input"
-              value={materialForm.source || 'Direct Purchase'}
+              value={materialForm.source || 'site_stock'}
               onChange={(e) => setMaterialForm({ ...materialForm, source: e.target.value })}
             >
-              <option value="Direct Purchase">Direct Purchase (Direct invoice — No Petty Cash deduction)</option>
-              <option value="Site Stock">Site Stock / General Site Entry</option>
-              <option value="Internal Transfer">Internal Transfer from another project</option>
+              <option value="site_stock">Site Stock / General Site Entry</option>
+              <option value="direct_purchase">Direct Purchase (Direct invoice — No Petty Cash deduction)</option>
             </select>
           </div>
 
+          {/* ── Material Selector ── */}
           <div className="form-group">
-            <label>Item Name *</label>
-            <input
+            <label>Material Item *</label>
+            <select
               className="input"
-              placeholder="e.g. UltraTech Cement / 16mm TMT Steel"
-              value={materialForm.itemName}
-              onChange={(e) => setMaterialForm({ ...materialForm, itemName: e.target.value })}
-              required
-            />
+              value={materialForm.selectedItemId || (materialForm.isNewMaterial ? '__new__' : '')}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '__new__') {
+                  setMaterialForm({ ...materialForm, selectedItemId: '', isNewMaterial: true, itemName: '', unit: 'Bags' });
+                } else if (val === '') {
+                  setMaterialForm({ ...materialForm, selectedItemId: '', isNewMaterial: false, itemName: '', unit: 'Bags' });
+                } else {
+                  const item = (materials?.items || []).find(i => i._id === val);
+                  setMaterialForm({ ...materialForm, selectedItemId: val, isNewMaterial: false, itemName: item?.itemName || '', unit: item?.unit || 'Bags' });
+                }
+              }}
+            >
+              <option value="">— Select existing item to restock —</option>
+              {(materials?.items || []).map(item => (
+                <option key={item._id} value={item._id}>
+                  {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                </option>
+              ))}
+              <option value="__new__">+ Register New Material Item</option>
+            </select>
           </div>
+
+          {/* Restock info banner */}
+          {materialForm.selectedItemId && (() => {
+            const sel = (materials?.items || []).find(i => i._id === materialForm.selectedItemId);
+            return sel ? (
+              <div style={{ padding: '8px 12px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', fontSize: '12px', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ℹ️ <span>Restocking <strong>{sel.itemName}</strong> — Current stock: <strong>{sel.balance ?? 0} {sel.unit || ''}</strong>. This quantity will be added to the existing balance.</span>
+              </div>
+            ) : null;
+          })()}
+
+          {/* New material name input + duplicate warning */}
+          {materialForm.isNewMaterial && (
+            <div className="form-group">
+              <label>New Item Name *</label>
+              <input
+                className="input"
+                placeholder="e.g. UltraTech Cement / 16mm TMT Steel"
+                value={materialForm.itemName}
+                onChange={(e) => setMaterialForm({ ...materialForm, itemName: e.target.value })}
+                required
+              />
+              {materialForm.itemName?.trim() && (materials?.items || []).some(
+                i => i.itemName.toLowerCase() === materialForm.itemName.trim().toLowerCase()
+              ) && (
+                <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                  ⚠️ <strong>"{materialForm.itemName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="responsive-grid-2col" style={{ gap: '12px' }}>
             <div className="form-group">
@@ -3032,7 +3473,9 @@ export default function ProjectDetail() {
               <select
                 className="input"
                 value={materialForm.unit}
+                disabled={!!materialForm.selectedItemId}
                 onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })}
+                style={materialForm.selectedItemId ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
               >
                 <option value="Bags">Bags</option>
                 <option value="Tons">Tons</option>
@@ -3209,6 +3652,7 @@ export default function ProjectDetail() {
                 <tr>
                   <th>Date</th>
                   <th>Type</th>
+                  <th>Source</th>
                   <th>Quantity</th>
                   <th>Remarks / Reason</th>
                 </tr>
@@ -3216,7 +3660,7 @@ export default function ProjectDetail() {
               <tbody>
                 {!selectedHistoryItem?.transactions || selectedHistoryItem.transactions.length === 0 ? (
                   <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: '#94A3B8', padding: '20px' }}>
+                    <td colSpan="5" style={{ textAlign: 'center', color: '#94A3B8', padding: '20px' }}>
                       No transactions recorded yet.
                     </td>
                   </tr>
@@ -3225,9 +3669,27 @@ export default function ProjectDetail() {
                     <tr key={idx}>
                       <td>{dayjs(tx.date).format('DD MMM YYYY')}</td>
                       <td>
-                        <Badge variant={tx.type === 'received' ? 'completed' : (tx.type === 'usage' ? 'pending' : 'active')}>
+                        <Badge variant={tx.type === 'purchase' || tx.type === 'receipt' || tx.type === 'received' ? 'completed' : (tx.type === 'usage' ? 'pending' : 'active')}>
                           {tx.type.toUpperCase()}
                         </Badge>
+                      </td>
+                      <td>
+                        {tx.source ? (
+                          <span
+                            className="badge"
+                            style={{
+                              backgroundColor: tx.source === 'direct_purchase' ? '#EEF2FF' : (tx.source === 'petty_cash' ? '#FEF3C7' : '#F1F5F9'),
+                              color: tx.source === 'direct_purchase' ? '#4338CA' : (tx.source === 'petty_cash' ? '#B45309' : '#475569'),
+                              border: `1px solid ${tx.source === 'direct_purchase' ? '#C7D2FE' : (tx.source === 'petty_cash' ? '#FDE68A' : '#E2E8F0')}`,
+                              fontWeight: 600,
+                              fontSize: '10px'
+                            }}
+                          >
+                            {tx.source === 'direct_purchase' ? 'DIRECT PURCHASE' : (tx.source === 'petty_cash' ? 'PETTY CASH' : 'SITE STOCK')}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94A3B8' }}>—</span>
+                        )}
                       </td>
                       <td style={{ fontWeight: 600, color: tx.quantity > 0 ? '#16A34A' : '#DC2626' }}>
                         {tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity} {selectedHistoryItem.unit || ''}

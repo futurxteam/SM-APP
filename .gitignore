@@ -1,0 +1,15 @@
+android/keystore.properties
+android/*.jks
+node_modules/
+dist/
+
+.env
+.env.*
+!.env.example
+
+*.log
+
+android/.gradle/
+android/build/
+android/app/build/
+android/.kotlin/

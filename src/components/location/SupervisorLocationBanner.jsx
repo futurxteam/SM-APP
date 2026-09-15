@@ -65,6 +65,23 @@ export default function SupervisorLocationBanner() {
         // to avoid timezone bugs (e.g. IST = UTC+5:30, so at 4 PM IST the backend
         // thinks it is only 10:30 AM UTC and returns wrong slot info).
 
+        if (!data.project) {
+  setPendingState({
+    pending: false,
+    pendingSlot: null,
+    slotLabel: '',
+    currentSlot: null,
+    missedSlots: [],
+    recordedSlots: [],
+    siteCoordinatesMissing: false,
+    project: null,
+    
+  });
+setIsManualOpen(false);
+setError(null);
+setGpsStatus('');
+  return;
+}
         const localHour = new Date().getHours();
         const localCurrentSlot =
           localHour < 12 ? '9am' :
@@ -131,11 +148,12 @@ export default function SupervisorLocationBanner() {
     // Re-check periodically every 60 seconds (to catch slot transitions at 9am, 12pm, 3pm, 6pm)
     const interval = setInterval(checkPendingLocation, 60000);
     const handleFocus = () => checkPendingLocation();
-    const handleManualOpen = () => {
-      setIsManualOpen(true);
-      checkPendingLocation();
-    };
+   const handleManualOpen = () => {
+  if (!pendingState.project?._id) return;
 
+  setIsManualOpen(true);
+  checkPendingLocation();
+};
     window.addEventListener('focus', handleFocus);
     window.addEventListener('hygge:open-location-declaration', handleManualOpen);
     window.addEventListener('hygge:open-location-modal', handleManualOpen);
@@ -205,9 +223,16 @@ export default function SupervisorLocationBanner() {
     setSuccessResult(null);
     setGpsStatus('Requesting precise GPS coordinates from device sensor...');
 
-    const targetSlot = getCurrentSlotKey();
+   const targetSlot = getCurrentSlotKey();
 
-    try {
+if (!pendingState.project?._id) {
+  setError('No project is currently assigned to you.');
+  setIsTransmitting(false);
+  setGpsStatus('');
+  return;
+}
+
+try {
       const pos = await getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 20000,
@@ -308,8 +333,10 @@ export default function SupervisorLocationBanner() {
   // Floating Quick Action Button — only visible when:
   // • modal is not already open, AND
   // • there is an unrecorded slot that is still within its active submission window
-  const showFloatingButton = !isModalVisible && isCurrentSlotStillSubmittable();
-
+const showFloatingButton =
+  !isModalVisible &&
+  !!pendingState.project?._id &&
+  isCurrentSlotStillSubmittable();
   const floatingQuickButton = showFloatingButton && (
     <div
       style={{
