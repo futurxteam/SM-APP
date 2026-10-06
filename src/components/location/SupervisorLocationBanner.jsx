@@ -27,6 +27,8 @@ export default function SupervisorLocationBanner() {
 
   const [pendingState, setPendingState] = useState({
     pending: false,
+    pendingCount: 0,
+    pendingProjects: [],
     pendingSlot: null,
     slotLabel: '',
     currentSlot: null,
@@ -34,8 +36,10 @@ export default function SupervisorLocationBanner() {
     recordedSlots: [],
     siteCoordinatesMissing: false,
     project: null,
+    availableProjects: [],
   });
 
+  const [isModalDismissed, setIsModalDismissed] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [isTransmitting, setIsTransmitting] = useState(false);
@@ -52,58 +56,55 @@ export default function SupervisorLocationBanner() {
   });
   const [isSettingSiteCoords, setIsSettingSiteCoords] = useState(false);
 
-  const checkPendingLocation = useCallback(async () => {
-    // Only site supervisors are tracked
+  const checkPendingLocation = useCallback(async (targetProjectId) => {
     if (!isSiteSupervisor()) return;
 
     try {
-      const res = await api.get('/location/pending-checkin');
+      const params = {};
+      if (targetProjectId) {
+        params.projectId = targetProjectId;
+      }
+      const res = await api.get('/location/pending-checkin', { params });
       const data = res.data;
       if (data.success) {
-        // ─── IMPORTANT: Backend runs on UTC. Device may be in a different timezone.
-        // We ALWAYS compute currentSlot and missedSlots from the DEVICE's local time
-        // to avoid timezone bugs (e.g. IST = UTC+5:30, so at 4 PM IST the backend
-        // thinks it is only 10:30 AM UTC and returns wrong slot info).
-
         if (!data.project) {
-  setPendingState({
-    pending: false,
-    pendingSlot: null,
-    slotLabel: '',
-    currentSlot: null,
-    missedSlots: [],
-    recordedSlots: [],
-    siteCoordinatesMissing: false,
-    project: null,
-    
-  });
-setIsManualOpen(false);
-setError(null);
-setGpsStatus('');
-  return;
-}
+          setPendingState({
+            pending: false,
+            pendingCount: 0,
+            pendingProjects: [],
+            pendingSlot: null,
+            slotLabel: '',
+            currentSlot: null,
+            missedSlots: [],
+            recordedSlots: [],
+            siteCoordinatesMissing: false,
+            project: null,
+            availableProjects: data.availableProjects || [],
+          });
+          setIsManualOpen(false);
+          setError(null);
+          setGpsStatus('');
+          return;
+        }
+
         const localHour = new Date().getHours();
         const localCurrentSlot =
           localHour < 12 ? '9am' :
           localHour < 15 ? '12pm' :
           localHour < 18 ? '3pm' : '6pm';
 
-        // Which slots have passed (by device local time)?
         const slotCutoffs = { '9am': 12, '12pm': 15, '3pm': 18, '6pm': 21 };
         const allSlots = ['9am', '12pm', '3pm', '6pm'];
 
-        const recordedSlots = data.recordedSlots || [];
+        const recordedSlots = data.project?.recordedSlots || data.recordedSlots || [];
 
-        // Slots that have expired (window closed) and were NOT recorded
         const localMissedSlots = allSlots.filter((s) => {
           const cutoff = slotCutoffs[s];
           return localHour >= cutoff && !recordedSlots.includes(s);
         });
 
-        // The current slot is pending if it hasn't been recorded yet
         const isCurrentSlotPending = !recordedSlots.includes(localCurrentSlot);
 
-        // Compute slot label for the current active slot
         const slotLabels = {
           '9am': 'Morning (9AM) Slot – Location Declaration',
           '12pm': 'Mid-Day (12PM) Slot – Location Declaration',
@@ -111,24 +112,44 @@ setGpsStatus('');
           '6pm': 'Evening (6PM) Slot – Location Declaration',
         };
 
+        // Check if project scheduled time period has finished (past endDate)
+        const isPeriodFinished = data.project?.endDate && new Date() > new Date(new Date(data.project.endDate).setHours(23, 59, 59, 999));
+
+        const isTargetPending = isPeriodFinished
+          ? false
+          : (data.project?.siteCoordinatesMissing
+              ? true
+              : (data.project?.pending !== undefined ? data.project.pending : isCurrentSlotPending));
+
+        const validAvailableProjects = (data.availableProjects || data.projects || []).filter(p => {
+          if (!p.endDate) return true;
+          return new Date() <= new Date(new Date(p.endDate).setHours(23, 59, 59, 999));
+        });
+
+        const validPendingProjects = (data.pendingProjects || (isTargetPending ? [data.project] : [])).filter(p => {
+          if (!p.endDate) return true;
+          return new Date() <= new Date(new Date(p.endDate).setHours(23, 59, 59, 999));
+        });
+
         setPendingState({
-          // Use backend's pending flag only if site coords are missing
-          // Otherwise compute from device local time
-          pending: data.siteCoordinatesMissing ? !!data.pending : isCurrentSlotPending,
-          pendingSlot: isCurrentSlotPending ? localCurrentSlot : null,
-          slotLabel: slotLabels[localCurrentSlot] || data.slotLabel || '',
+          pending: validPendingProjects.length > 0,
+          pendingCount: validPendingProjects.length,
+          pendingProjects: validPendingProjects,
+          pendingSlot: isTargetPending ? localCurrentSlot : null,
+          slotLabel: slotLabels[localCurrentSlot] || data.project?.slotLabel || data.slotLabel || '',
           currentSlot: localCurrentSlot,
           missedSlots: localMissedSlots,
           recordedSlots,
-          siteCoordinatesMissing: !!data.siteCoordinatesMissing,
+          siteCoordinatesMissing: isPeriodFinished ? false : !!data.project?.siteCoordinatesMissing,
           project: data.project || null,
+          availableProjects: validAvailableProjects,
         });
 
-        if (isCurrentSlotPending) {
+        if (isCurrentSlotPending && !isPeriodFinished) {
           setSelectedSlot(localCurrentSlot);
         }
 
-        if (data.siteCoordinatesMissing && data.project) {
+        if (data.project?.siteCoordinatesMissing && data.project) {
           setSiteSetupForm((prev) => ({
             ...prev,
             address: data.project.name || '',
@@ -145,15 +166,17 @@ setGpsStatus('');
 
     checkPendingLocation();
 
-    // Re-check periodically every 60 seconds (to catch slot transitions at 9am, 12pm, 3pm, 6pm)
-    const interval = setInterval(checkPendingLocation, 60000);
-    const handleFocus = () => checkPendingLocation();
-   const handleManualOpen = () => {
-  if (!pendingState.project?._id) return;
+    // Re-check periodically every 60 seconds
+    const interval = setInterval(() => checkPendingLocation(pendingState.project?._id), 60000);
+    const handleFocus = () => checkPendingLocation(pendingState.project?._id);
 
-  setIsManualOpen(true);
-  checkPendingLocation();
-};
+    const handleManualOpen = (e) => {
+      setIsModalDismissed(false);
+      setIsManualOpen(true);
+      const targetId = e?.detail?.projectId || pendingState.project?._id;
+      checkPendingLocation(targetId);
+    };
+
     window.addEventListener('focus', handleFocus);
     window.addEventListener('hygge:open-location-declaration', handleManualOpen);
     window.addEventListener('hygge:open-location-modal', handleManualOpen);
@@ -164,7 +187,7 @@ setGpsStatus('');
       window.removeEventListener('hygge:open-location-declaration', handleManualOpen);
       window.removeEventListener('hygge:open-location-modal', handleManualOpen);
     };
-  }, [isSiteSupervisor, checkPendingLocation]);
+  }, [isSiteSupervisor, checkPendingLocation, pendingState.project?._id]);
 
   const getCurrentSlotKey = () => {
     const hour = new Date().getHours();
@@ -174,23 +197,14 @@ setGpsStatus('');
     return '6pm';
   };
 
-  /**
-   * Returns true only when:
-   *  1. The current slot has NOT been recorded yet (it's pending)
-   *  2. We are within the active 3-hour submission window for that slot
-   *     (9am window: 09:00–11:59, 12pm: 12:00–14:59, 3pm: 15:00–17:59, 6pm: 18:00–19:59)
-   * Outside tracking hours (before 9am or after 8pm) returns false.
-   */
   const isCurrentSlotStillSubmittable = () => {
     const hour = new Date().getHours();
-    // Outside tracking period entirely
     if (hour < 9 || hour >= 20) return false;
 
     const currentSlot = getCurrentSlotKey();
     const isRecorded = pendingState.recordedSlots?.includes(currentSlot);
     if (isRecorded) return false;
 
-    // Slot windows: open at start hour, close at cutoff hour
     const slotWindow = { '9am': [9, 12], '12pm': [12, 15], '3pm': [15, 18], '6pm': [18, 20] };
     const [start, end] = slotWindow[currentSlot] || [0, 0];
     return hour >= start && hour < end;
@@ -223,16 +237,16 @@ setGpsStatus('');
     setSuccessResult(null);
     setGpsStatus('Requesting precise GPS coordinates from device sensor...');
 
-   const targetSlot = getCurrentSlotKey();
+    const targetSlot = getCurrentSlotKey();
 
-if (!pendingState.project?._id) {
-  setError('No project is currently assigned to you.');
-  setIsTransmitting(false);
-  setGpsStatus('');
-  return;
-}
+    if (!pendingState.project?._id) {
+      setError('No active project is selected.');
+      setIsTransmitting(false);
+      setGpsStatus('');
+      return;
+    }
 
-try {
+    try {
       const pos = await getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 20000,
@@ -243,7 +257,7 @@ try {
       setGpsStatus(`GPS signal locked (Accuracy: ±${Math.round(accuracy || 0)}m). Submitting to server...`);
 
       const res = await api.post('/location/checkin', {
-        projectId: pendingState.project?._id,
+        projectId: pendingState.project._id,
         latitude,
         longitude,
         accuracy,
@@ -255,7 +269,6 @@ try {
       setGpsStatus('');
       setSuccessResult(res.data.data);
 
-      // Immediately mark slot recorded in state
       setPendingState((prev) => ({
         ...prev,
         pending: false,
@@ -267,12 +280,12 @@ try {
         window.dispatchEvent(new CustomEvent('hygge:location-updated', { detail: { slot: targetSlot } }));
       }
 
-      // After 2.5 seconds of showing verified confirmation, clear and un-blur the screen
+      // After 2 seconds of showing confirmation, refresh status for parallel projects
       setTimeout(() => {
         setSuccessResult(null);
         setIsManualOpen(false);
         checkPendingLocation();
-      }, 2500);
+      }, 2000);
     } catch (err) {
       setIsTransmitting(false);
       setGpsStatus('');
@@ -300,7 +313,7 @@ try {
       });
 
       setIsSettingSiteCoords(false);
-      checkPendingLocation();
+      checkPendingLocation(pendingState.project._id);
     } catch (err) {
       setIsSettingSiteCoords(false);
       setError(err.response?.data?.message || 'Failed to save site coordinates.');
@@ -328,15 +341,14 @@ try {
     return null;
   }
 
-  const isModalVisible = pendingState.pending || isManualOpen || successResult;
+  // The modal overlay is visible if it hasn't been dismissed AND check-in is pending or manual open or success
+  const isModalVisible = !isModalDismissed && (pendingState.pending || isManualOpen || successResult);
 
-  // Floating Quick Action Button — only visible when:
-  // • modal is not already open, AND
-  // • there is an unrecorded slot that is still within its active submission window
-const showFloatingButton =
-  !isModalVisible &&
-  !!pendingState.project?._id &&
-  isCurrentSlotStillSubmittable();
+  const showFloatingButton =
+    !isModalVisible &&
+    !!pendingState.project?._id &&
+    isCurrentSlotStillSubmittable();
+
   const floatingQuickButton = showFloatingButton && (
     <div
       style={{
@@ -350,8 +362,9 @@ const showFloatingButton =
       <button
         type="button"
         onClick={() => {
+          setIsModalDismissed(false);
           setIsManualOpen(true);
-          checkPendingLocation();
+          checkPendingLocation(pendingState.project?._id);
         }}
         style={{
           display: 'flex',
@@ -375,41 +388,121 @@ const showFloatingButton =
     </div>
   );
 
-  if (!isModalVisible) {
-    return floatingQuickButton || null;
-  }
-
   return (
     <>
-      <div className="supervisor-location-overlay" style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.75)',
-        backdropFilter: 'blur(8px)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
-        overflowY: 'auto'
-      }}>
-        <div className="location-modal-card" style={{
-          backgroundColor: '#FFFFFF',
-          borderRadius: '16px',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
-          maxWidth: '520px',
-          width: '100%',
-          padding: '24px',
-          textAlign: 'center',
-          position: 'relative',
-          maxHeight: '90vh',
-          overflowY: 'auto'
+      {/* ── TOP PERSISTENT NOTIFICATION STRIP: ALWAYS VISIBLE AT TOP OF EVERY PAGE WHEN NOT FILLED ── */}
+      {pendingState.pending && (
+        <div style={{
+          backgroundColor: '#FFFBEB',
+          borderBottom: '1px solid #FCD34D',
+          padding: '10px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          color: '#92400E',
+          position: 'sticky',
+          top: 0,
+          zIndex: 89,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
         }}>
-          {/* Close Button only if not in mandatory pending state */}
-          {!pendingState.pending && !pendingState.siteCoordinatesMissing && !successResult && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <ShieldAlert size={18} color="#D97706" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '13px', lineHeight: '1.4' }}>
+              <span style={{ fontWeight: 700, color: '#B45309' }}>
+                Site Location Check-in Not Filled:
+              </span>{' '}
+              <span>
+                {(pendingState.pendingProjects?.length > 0
+                  ? pendingState.pendingProjects
+                  : [pendingState.project]
+                ).filter(Boolean).map(p => `${p.name}${p.code ? ` (${p.code})` : ''}`).join(', ')}
+              </span>
+            </div>
+
+            <span style={{
+              backgroundColor: '#FEE2E2',
+              color: '#DC2626',
+              border: '1px solid #FECACA',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase'
+            }}>
+              NOT FILLED
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
-              onClick={() => setIsManualOpen(false)}
+              onClick={() => {
+                const targetId = pendingState.pendingProjects?.[0]?._id || pendingState.project?._id;
+                setIsModalDismissed(false);
+                setIsManualOpen(true);
+                checkPendingLocation(targetId);
+              }}
+              className="btn btn-sm"
+              style={{
+                backgroundColor: '#D97706',
+                color: '#FFFFFF',
+                border: 'none',
+                padding: '5px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              <MapPin size={13} />
+              <span>Check-in Now</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Button */}
+      {floatingQuickButton}
+
+      {/* ── MODAL OVERLAY: FULL POPUP (NOW ALWAYS CLOSABLE) ── */}
+      {isModalVisible && (
+        <div className="supervisor-location-overlay" style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+          overflowY: 'auto'
+        }}>
+          <div className="location-modal-card" style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: '16px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
+            maxWidth: '540px',
+            width: '100%',
+            padding: '24px',
+            textAlign: 'center',
+            position: 'relative',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            {/* Close Button: Always available so user is never trapped */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalDismissed(true);
+                setIsManualOpen(false);
+              }}
               style={{
                 position: 'absolute',
                 top: '16px',
@@ -423,521 +516,621 @@ const showFloatingButton =
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                color: '#64748B'
+                color: '#64748B',
+                transition: 'background 0.15s ease'
               }}
               aria-label="Close"
+              title="Close modal (notification remains at top of page)"
             >
               <X size={18} />
             </button>
-          )}
 
-          {successResult ? (
-            /* CASE 1: SUCCESS CONFIRMATION */
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '16px 0' }}>
-              <div style={{
-                width: '72px',
-                height: '72px',
-                borderRadius: '50%',
-                backgroundColor: '#D1FAE5',
-                border: '3px solid #10B981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#059669',
-                boxShadow: '0 8px 20px rgba(16, 185, 129, 0.25)',
-                animation: 'scaleUpCard 0.3s ease'
-              }}>
-                <CheckCircle2 size={40} />
-              </div>
-
-              <div>
+            {successResult ? (
+              /* CASE 1: SUCCESS CONFIRMATION */
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '16px 0' }}>
                 <div style={{
-                  display: 'inline-block',
-                  padding: '4px 12px',
-                  borderRadius: '9999px',
-                  backgroundColor: '#ECFDF5',
-                  color: '#047857',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  marginBottom: '8px'
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  backgroundColor: '#D1FAE5',
+                  border: '3px solid #10B981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#059669',
+                  boxShadow: '0 8px 20px rgba(16, 185, 129, 0.25)',
+                  animation: 'scaleUpCard 0.3s ease'
                 }}>
-                  {(successResult.slot || 'Check-in').toUpperCase()} Verified
+                  <CheckCircle2 size={40} />
                 </div>
-                <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
-                  Location Check-in Recorded!
-                </h2>
-                <p style={{ fontSize: '13px', color: '#475569', marginTop: '6px' }}>
-                  {successResult.deviationFormatted || 'On-site presence confirmed.'}
-                </p>
-                {successResult.distanceFromSiteMeters != null && (
+
+                <div>
+                  <div style={{
+                    display: 'inline-block',
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    backgroundColor: '#ECFDF5',
+                    color: '#047857',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    marginBottom: '8px'
+                  }}>
+                    {(successResult.slot || 'Check-in').toUpperCase()} Verified
+                  </div>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
+                    Location Check-in Recorded!
+                  </h2>
+                  <p style={{ fontSize: '13px', color: '#475569', marginTop: '6px' }}>
+                    {successResult.deviationFormatted || 'On-site presence confirmed.'}
+                  </p>
+                  {successResult.distanceFromSiteMeters != null && (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      backgroundColor: '#F8FAFC',
+                      border: '1px solid #E2E8F0',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      color: '#334155',
+                      marginTop: '8px'
+                    }}>
+                      <Crosshair size={14} color="#2563EB" />
+                      <span>Distance: <strong>{Math.round(successResult.distanceFromSiteMeters)}m</strong> from site center</span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '12px',
+                  color: '#64748B',
+                  marginTop: '12px'
+                }}>
+                  <RefreshCw size={14} className="spin-icon" />
+                  <span>Updating site compliance...</span>
+                </div>
+              </div>
+            ) : pendingState.siteCoordinatesMissing ? (
+              /* CASE 2: MANDATORY INITIAL SITE COORDINATE CONFIGURATION */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
+                  boxShadow: '0 8px 20px rgba(220, 38, 38, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#FFF',
+                  margin: '0 auto'
+                }}>
+                  <ShieldAlert size={34} />
+                </div>
+
+                <div>
+                  <div style={{
+                    display: 'inline-block',
+                    padding: '3px 10px',
+                    borderRadius: '4px',
+                    backgroundColor: '#FEE2E2',
+                    color: '#991B1B',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    marginBottom: '6px'
+                  }}>
+                    Initial Site Setup
+                  </div>
+                  <h2 style={{ fontSize: '19px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
+                    Set Project Site Coordinates
+                  </h2>
+                  <p style={{ fontSize: '13px', color: '#64748B', marginTop: '6px', lineHeight: '1.4' }}>
+                    Project <strong>{pendingState.project?.name}</strong> has no site coordinates defined. Please configure coordinates to enable geofence check-ins.
+                  </p>
+                </div>
+
+                {error && (
+                  <div style={{
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    color: '#991B1B',
+                    padding: '10px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    textAlign: 'left'
+                  }}>
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                {gpsStatus && (
+                  <div style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600 }}>
+                    {gpsStatus}
+                  </div>
+                )}
+
+                <form onSubmit={handleSetSiteCoordinates} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      icon={Navigation}
+                      onClick={handleCaptureCurrentGPSAsSite}
+                      style={{ width: '100%' }}
+                    >
+                      Capture Current Device GPS
+                    </Button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Latitude</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 12.971598"
+                        className="form-control"
+                        style={{ width: '100%', fontSize: '13px', padding: '8px' }}
+                        value={siteSetupForm.latitude}
+                        onChange={(e) => setSiteSetupForm({ ...siteSetupForm, latitude: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Longitude</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 77.594566"
+                        className="form-control"
+                        style={{ width: '100%', fontSize: '13px', padding: '8px' }}
+                        value={siteSetupForm.longitude}
+                        onChange={(e) => setSiteSetupForm({ ...siteSetupForm, longitude: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Geofence Radius (Meters)</label>
+                    <input
+                      type="number"
+                      placeholder="200"
+                      className="form-control"
+                      style={{ width: '100%', fontSize: '13px', padding: '8px' }}
+                      value={siteSetupForm.radiusMeters}
+                      onChange={(e) => setSiteSetupForm({ ...siteSetupForm, radiusMeters: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={isSettingSiteCoords}
+                    style={{ width: '100%', padding: '10px', marginTop: '4px' }}
+                  >
+                    {isSettingSiteCoords ? 'Saving Site Coordinates...' : 'Save Coordinates'}
+                  </Button>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalDismissed(true);
+                    setIsManualOpen(false);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748B',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    marginTop: '6px',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Dismiss for now (shown as not filled at top of page)
+                </button>
+              </div>
+            ) : (
+              /* CASE 3: SCHEDULED / ON-DEMAND LOCATION CHECK-IN */
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+                  boxShadow: '0 8px 20px rgba(37, 99, 235, 0.35)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#FFF',
+                  margin: '0 auto'
+                }}>
+                  <MapPin size={34} />
+                </div>
+
+                <div>
                   <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '6px 14px',
+                    padding: '4px 12px',
+                    borderRadius: '9999px',
+                    backgroundColor: '#FEF3C7',
+                    border: '1px solid #FCD34D',
+                    color: '#92400E',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    marginBottom: '8px'
+                  }}>
+                    <Clock size={12} />
+                    <span>{pendingState.slotLabel || 'Site Supervisor Location Declaration'}</span>
+                  </div>
+
+                  <h2 style={{ fontSize: '21px', fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.3px' }}>
+                    {pendingState.pending ? 'Supervisor Location Required' : 'Declare Site Location'}
+                  </h2>
+
+                  <p style={{ fontSize: '13px', color: '#64748B', marginTop: '8px', lineHeight: '1.5' }}>
+                    Submit your real-time GPS location to verify physical presence at your active project site.
+                  </p>
+                </div>
+
+                {/* ── PARALLEL ACTIVE SITES SELECTOR (IF MULTIPLE ACTIVE PROJECTS ASSIGNED) ── */}
+                {pendingState.availableProjects && pendingState.availableProjects.length > 1 && (
+                  <div style={{
+                    width: '100%',
                     backgroundColor: '#F8FAFC',
                     border: '1px solid #E2E8F0',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    color: '#334155',
-                    marginTop: '8px'
+                    borderRadius: '8px',
+                    padding: '12px',
+                    textAlign: 'left'
                   }}>
-                    <Crosshair size={14} color="#2563EB" />
-                    <span>Distance: <strong>{Math.round(successResult.distanceFromSiteMeters)}m</strong> from site center</span>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: '8px' }}>
+                      Active Projects Assigned in Parallel:
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {pendingState.availableProjects.map((p) => {
+                        const isSelected = pendingState.project?._id === p._id;
+                        return (
+                          <button
+                            key={p._id}
+                            type="button"
+                            onClick={() => checkPendingLocation(p._id)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              border: isSelected ? '2px solid #2563EB' : '1px solid #CBD5E1',
+                              backgroundColor: isSelected ? '#EFF6FF' : '#FFFFFF',
+                              color: isSelected ? '#1D4ED8' : '#334155',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <Building2 size={13} color={isSelected ? '#2563EB' : '#64748B'} />
+                            <span>{p.code ? `[${p.code}] ` : ''}{p.name}</span>
+                            {p.pending ? (
+                              <span style={{
+                                backgroundColor: '#FEE2E2',
+                                color: '#DC2626',
+                                fontSize: '10px',
+                                padding: '1px 5px',
+                                borderRadius: '10px'
+                              }}>
+                                Not Filled
+                              </span>
+                            ) : (
+                              <span style={{
+                                backgroundColor: '#ECFDF5',
+                                color: '#059669',
+                                fontSize: '10px',
+                                padding: '1px 5px',
+                                borderRadius: '10px'
+                              }}>
+                                ✓ Done
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '12px',
-                color: '#64748B',
-                marginTop: '12px'
-              }}>
-                <RefreshCw size={14} className="spin-icon" />
-                <span>Unlocking supervisor dashboard and site tools...</span>
-              </div>
-            </div>
-          ) : pendingState.siteCoordinatesMissing ? (
-            /* CASE 2: MANDATORY INITIAL SITE COORDINATE CONFIGURATION */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
-                boxShadow: '0 8px 20px rgba(220, 38, 38, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFF',
-                margin: '0 auto'
-              }}>
-                <ShieldAlert size={34} />
-              </div>
-
-              <div>
+                {/* Currently Selected Project Badge */}
                 <div style={{
-                  display: 'inline-block',
-                  padding: '3px 10px',
-                  borderRadius: '4px',
-                  backgroundColor: '#FEE2E2',
-                  color: '#991B1B',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  marginBottom: '6px'
-                }}>
-                  Mandatory Initial Site Setup
-                </div>
-                <h2 style={{ fontSize: '19px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
-                  Set Project Site Coordinates
-                </h2>
-                <p style={{ fontSize: '13px', color: '#64748B', marginTop: '6px', lineHeight: '1.4' }}>
-                  Project <strong>{pendingState.project?.name}</strong> has no site coordinates defined. As the Site Supervisor, you must initialize the physical location coordinates to establish the geofence perimeter.
-                </p>
-              </div>
-
-              {error && (
-                <div style={{
-                  backgroundColor: '#FEF2F2',
-                  border: '1px solid #FCA5A5',
-                  color: '#991B1B',
-                  padding: '10px 14px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
+                  width: '100%',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   textAlign: 'left'
                 }}>
-                  ⚠️ {error}
-                </div>
-              )}
-
-              {gpsStatus && (
-                <div style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600 }}>
-                  {gpsStatus}
-                </div>
-              )}
-
-              <form onSubmit={handleSetSiteCoordinates} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    icon={Navigation}
-                    onClick={handleCaptureCurrentGPSAsSite}
-                    style={{ width: '100%' }}
-                  >
-                    Capture Current Device GPS
-                  </Button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Latitude</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 12.971598"
-                      className="form-control"
-                      style={{ width: '100%', fontSize: '13px', padding: '8px' }}
-                      value={siteSetupForm.latitude}
-                      onChange={(e) => setSiteSetupForm({ ...siteSetupForm, latitude: e.target.value })}
-                      required
-                    />
+                    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748B', fontWeight: 600 }}>
+                      Selected Site
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#1E293B', marginTop: '2px' }}>
+                      {pendingState.project?.name || 'Active Project Site'}
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Longitude</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 77.594566"
-                      className="form-control"
-                      style={{ width: '100%', fontSize: '13px', padding: '8px' }}
-                      value={siteSetupForm.longitude}
-                      onChange={(e) => setSiteSetupForm({ ...siteSetupForm, longitude: e.target.value })}
-                      required
-                    />
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    backgroundColor: '#EFF6FF',
+                    color: '#1D4ED8',
+                    padding: '4px 10px',
+                    borderRadius: '4px'
+                  }}>
+                    {pendingState.project?.code || 'SITE'}
                   </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Geofence Radius (Meters)</label>
-                  <input
-                    type="number"
-                    placeholder="200"
-                    className="form-control"
-                    style={{ width: '100%', fontSize: '13px', padding: '8px' }}
-                    value={siteSetupForm.radiusMeters}
-                    onChange={(e) => setSiteSetupForm({ ...siteSetupForm, radiusMeters: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  disabled={isSettingSiteCoords}
-                  style={{ width: '100%', padding: '10px', marginTop: '4px' }}
-                >
-                  {isSettingSiteCoords ? 'Saving Site Coordinates...' : 'Save & Enable Check-in'}
-                </Button>
-              </form>
-            </div>
-          ) : (
-            /* CASE 3: SCHEDULED / ON-DEMAND LOCATION CHECK-IN */
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
-                boxShadow: '0 8px 20px rgba(37, 99, 235, 0.35)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFF',
-                margin: '0 auto'
-              }}>
-                <MapPin size={34} />
-              </div>
-
-              <div>
+                {/* 4-Checkpoint Daily Compliance Schedule */}
                 <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '4px 12px',
-                  borderRadius: '9999px',
-                  backgroundColor: '#FEF3C7',
-                  border: '1px solid #FCD34D',
-                  color: '#92400E',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  marginBottom: '8px'
+                  width: '100%',
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  textAlign: 'left',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
                 }}>
-                  <Clock size={12} />
-                  <span>{pendingState.slotLabel || 'Site Supervisor Location Declaration'}</span>
-                </div>
-
-                <h2 style={{ fontSize: '21px', fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.3px' }}>
-                  {pendingState.pending ? 'Supervisor Location Required' : 'Declare Site Location'}
-                </h2>
-
-                <p style={{ fontSize: '13px', color: '#64748B', marginTop: '8px', lineHeight: '1.5' }}>
-                  {pendingState.pending 
-                    ? 'Please submit your real-time site location. All supervisor actions are paused until on-site presence is confirmed for this checkpoint.'
-                    : 'Submit your real-time GPS location to verify physical presence at the project site.'}
-                </p>
-              </div>
-
-              {/* Project Site Details Badge */}
-              <div style={{
-                width: '100%',
-                backgroundColor: '#F8FAFC',
-                border: '1px solid #E2E8F0',
-                borderRadius: '8px',
-                padding: '12px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                textAlign: 'left'
-              }}>
-                <div>
-                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748B', fontWeight: 600 }}>
-                    Assigned Project
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '10px'
+                  }}>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Daily Checkpoint Schedule
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B' }}>
+                      4 Mandatory Intervals
+                    </span>
                   </div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#1E293B', marginTop: '2px' }}>
-                    {pendingState.project?.name || 'Assigned Site'}
-                  </div>
-                </div>
-                <div style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  backgroundColor: '#EFF6FF',
-                  color: '#1D4ED8',
-                  padding: '4px 10px',
-                  borderRadius: '4px'
-                }}>
-                  {pendingState.project?.code || 'SITE'}
-                </div>
-              </div>
 
-              {/* 4-Checkpoint Daily Compliance Breakdown */}
-              <div style={{
-                width: '100%',
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E2E8F0',
-                borderRadius: '10px',
-                padding: '14px',
-                textAlign: 'left',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '10px'
-                }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Daily Checkpoint Schedule
-                  </span>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B' }}>
-                    4 Mandatory Intervals
-                  </span>
-                </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {DAILY_CHECKPOINTS.map((item) => {
+                      const slotInfo = getSlotState(item.slot);
+                      const currentActiveKey = getCurrentSlotKey();
+                      const isCurrentActive = currentActiveKey === item.slot;
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {DAILY_CHECKPOINTS.map((item) => {
-                    const slotInfo = getSlotState(item.slot);
-                    const currentActiveKey = getCurrentSlotKey();
-                    const isCurrentActive = currentActiveKey === item.slot;
+                      let badgeColor = '#64748B';
+                      let badgeBg = '#F1F5F9';
+                      let icon = <Clock size={15} color="#94A3B8" />;
+                      let borderStyle = '1px solid #E2E8F0';
+                      let bgStyle = '#F8FAFC';
+                      let cursorStyle = 'default';
 
-                    let badgeColor = '#64748B';
-                    let badgeBg = '#F1F5F9';
-                    let icon = <Clock size={15} color="#94A3B8" />;
-                    let borderStyle = '1px solid #E2E8F0';
-                    let bgStyle = '#F8FAFC';
-                    let cursorStyle = 'default';
+                      if (slotInfo.status === 'completed') {
+                        badgeColor = '#047857';
+                        badgeBg = '#ECFDF5';
+                        borderStyle = '1px solid #BBF7D0';
+                        bgStyle = '#F0FDF4';
+                        icon = <CheckCircle2 size={15} color="#059669" />;
+                      } else if (slotInfo.status === 'missed') {
+                        badgeColor = '#B91C1C';
+                        badgeBg = '#FEE2E2';
+                        borderStyle = '1px solid #FECACA';
+                        bgStyle = '#FFF5F5';
+                        cursorStyle = 'not-allowed';
+                        icon = <XCircle size={15} color="#DC2626" />;
+                      } else if (slotInfo.status === 'ready' || isCurrentActive) {
+                        badgeColor = '#1D4ED8';
+                        badgeBg = '#EFF6FF';
+                        borderStyle = '2px solid #3B82F6';
+                        bgStyle = '#F0F9FF';
+                        cursorStyle = 'pointer';
+                        icon = <Navigation size={15} color="#2563EB" />;
+                      } else {
+                        cursorStyle = 'not-allowed';
+                      }
 
-                    if (slotInfo.status === 'completed') {
-                      badgeColor = '#047857';
-                      badgeBg = '#ECFDF5';
-                      borderStyle = '1px solid #BBF7D0';
-                      bgStyle = '#F0FDF4';
-                      icon = <CheckCircle2 size={15} color="#059669" />;
-                    } else if (slotInfo.status === 'missed') {
-                      badgeColor = '#B91C1C';
-                      badgeBg = '#FEE2E2';
-                      borderStyle = '1px solid #FECACA';
-                      bgStyle = '#FFF5F5';
-                      cursorStyle = 'not-allowed';
-                      icon = <XCircle size={15} color="#DC2626" />;
-                    } else if (slotInfo.status === 'ready' || isCurrentActive) {
-                      badgeColor = '#1D4ED8';
-                      badgeBg = '#EFF6FF';
-                      borderStyle = '2px solid #3B82F6';
-                      bgStyle = '#F0F9FF';
-                      cursorStyle = 'pointer';
-                      icon = <Navigation size={15} color="#2563EB" />;
-                    } else {
-                      cursorStyle = 'not-allowed';
-                    }
-
-                    return (
-                      <div
-                        key={item.slot}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '10px 14px',
-                          borderRadius: '8px',
-                          backgroundColor: bgStyle,
-                          border: borderStyle,
-                          boxShadow: (slotInfo.status === 'ready' || isCurrentActive) ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : 'none',
-                          cursor: cursorStyle,
-                          transition: 'all 0.15s ease',
-                          opacity: slotInfo.status === 'missed' ? 0.9 : 1
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {icon}
-                          <div>
-                            <div style={{ fontSize: '13px', fontWeight: (slotInfo.status === 'ready' || isCurrentActive) ? 700 : 600, color: '#1E293B' }}>
-                              {item.label} <span style={{ fontWeight: 400, color: '#64748B', fontSize: '12px' }}>— {item.name}</span>
-                            </div>
-                            <div style={{
-                              fontSize: '11px',
-                              color: slotInfo.status === 'missed' ? '#DC2626' : (slotInfo.status === 'completed' ? '#059669' : ((slotInfo.status === 'ready' || isCurrentActive) ? '#2563EB' : '#64748B')),
-                              fontWeight: (slotInfo.status === 'missed' || slotInfo.status === 'ready' || isCurrentActive) ? 600 : 400
-                            }}>
-                              {slotInfo.desc}
+                      return (
+                        <div
+                          key={item.slot}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '10px 14px',
+                            borderRadius: '8px',
+                            backgroundColor: bgStyle,
+                            border: borderStyle,
+                            boxShadow: (slotInfo.status === 'ready' || isCurrentActive) ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : 'none',
+                            cursor: cursorStyle,
+                            transition: 'all 0.15s ease',
+                            opacity: slotInfo.status === 'missed' ? 0.9 : 1
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            {icon}
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: (slotInfo.status === 'ready' || isCurrentActive) ? 700 : 600, color: '#1E293B' }}>
+                                {item.label} <span style={{ fontWeight: 400, color: '#64748B', fontSize: '12px' }}>— {item.name}</span>
+                              </div>
+                              <div style={{
+                                fontSize: '11px',
+                                color: slotInfo.status === 'missed' ? '#DC2626' : (slotInfo.status === 'completed' ? '#059669' : ((slotInfo.status === 'ready' || isCurrentActive) ? '#2563EB' : '#64748B')),
+                                fontWeight: (slotInfo.status === 'missed' || slotInfo.status === 'ready' || isCurrentActive) ? 600 : 400
+                              }}>
+                                {slotInfo.desc}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.03em',
-                          backgroundColor: badgeBg,
-                          color: badgeColor,
-                          border: `1px solid ${slotInfo.status === 'completed' ? '#A7F3D0' : (slotInfo.status === 'missed' ? '#FCA5A5' : (slotInfo.status === 'ready' ? '#BFDBFE' : 'transparent'))}`,
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {slotInfo.label}
-                        </span>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.03em',
+                            backgroundColor: badgeBg,
+                            color: badgeColor,
+                            border: `1px solid ${slotInfo.status === 'completed' ? '#A7F3D0' : (slotInfo.status === 'missed' ? '#FCA5A5' : (slotInfo.status === 'ready' ? '#BFDBFE' : 'transparent'))}`,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {slotInfo.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {pendingState.missedSlots?.length > 0 && (() => {
+                    const currentKey = getCurrentSlotKey();
+                    const currentSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentKey);
+                    const missedLabels = pendingState.missedSlots
+                      .map(s => DAILY_CHECKPOINTS.find(c => c.slot === s)?.label || s)
+                      .join(', ');
+                    return (
+                      <div style={{
+                        marginTop: '10px',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: '#FEF2F2',
+                        border: '1px solid #FCA5A5',
+                        fontSize: '11px',
+                        color: '#991B1B',
+                        lineHeight: '1.4'
+                      }}>
+                        ⚠️ <strong>Notice:</strong> Past checkpoint(s) [{missedLabels}] cannot be back-submitted. Only the current <strong>{currentSlotObj?.label || currentKey}</strong> check-in window can be submitted.
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
 
-                {pendingState.missedSlots?.length > 0 && (() => {
-                  const currentKey = getCurrentSlotKey();
-                  const currentSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentKey);
-                  const missedLabels = pendingState.missedSlots
-                    .map(s => DAILY_CHECKPOINTS.find(c => c.slot === s)?.label || s)
-                    .join(', ');
+                {/* Error Message */}
+                {error && (
+                  <div style={{
+                    width: '100%',
+                    backgroundColor: '#FEF2F2',
+                    border: '1px solid #FCA5A5',
+                    color: '#991B1B',
+                    padding: '10px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    textAlign: 'left'
+                  }}>
+                    ⚠️ {error}
+                  </div>
+                )}
+
+                {/* Live GPS Lock Status */}
+                {gpsStatus && (
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    color: '#2563EB',
+                    fontWeight: 600,
+                    backgroundColor: '#EFF6FF',
+                    padding: '6px 14px',
+                    borderRadius: '9999px'
+                  }}>
+                    <RefreshCw size={13} className="spin-icon" />
+                    <span>{gpsStatus}</span>
+                  </div>
+                )}
+
+                {/* Transmit CTA Button */}
+                {(() => {
+                  const currentActiveKey = getCurrentSlotKey();
+                  const activeState = getSlotState(currentActiveKey);
+                  const isCompleted = activeState.status === 'completed';
+                  const isMissed = activeState.status === 'missed';
+                  const activeSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentActiveKey);
+
                   return (
-                    <div style={{
-                      marginTop: '10px',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      backgroundColor: '#FEF2F2',
-                      border: '1px solid #FCA5A5',
-                      fontSize: '11px',
-                      color: '#991B1B',
-                      lineHeight: '1.4'
-                    }}>
-                      ⚠️ <strong>Notice:</strong> Past checkpoint(s) [{missedLabels}] cannot be back-submitted. Only the current <strong>{currentSlotObj?.label || currentKey}</strong> check-in window can be submitted.
+                    <div style={{ width: '100%', marginTop: '4px' }}>
+                      <Button
+                        type="button"
+                        variant={isCompleted ? 'secondary' : 'primary'}
+                        icon={isCompleted ? CheckCircle2 : Navigation}
+                        onClick={handleTransmitCoordinates}
+                        disabled={isTransmitting || isCompleted || isMissed}
+                        style={{
+                          width: '100%',
+                          padding: '12px 20px',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          backgroundColor: isCompleted ? '#F1F5F9' : '#2563EB',
+                          borderColor: isCompleted ? '#E2E8F0' : '#1D4ED8',
+                          color: isCompleted ? '#475569' : '#FFFFFF',
+                          boxShadow: isCompleted ? 'none' : '0 4px 14px rgba(37, 99, 235, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        {isTransmitting
+                          ? 'Acquiring GPS Signal...'
+                          : isCompleted
+                          ? `✓ ${activeSlotObj?.label} Check-in Already Completed`
+                          : isMissed
+                          ? 'Check-in Windows Closed for Today'
+                          : `Transmit GPS for ${pendingState.project?.name || 'Site'}`}
+                      </Button>
+
+                      {error && (
+                        <button
+                          type="button"
+                          onClick={handleTransmitCoordinates}
+                          className="btn btn-outline btn-sm"
+                          style={{ width: '100%', marginTop: '8px', fontSize: '12px' }}
+                        >
+                          <RefreshCw size={12} /> Try Again
+                        </button>
+                      )}
                     </div>
                   );
                 })()}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalDismissed(true);
+                    setIsManualOpen(false);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748B',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    marginTop: '4px',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Dismiss for now (shown as not filled at top of page)
+                </button>
               </div>
-
-              {/* Error Message */}
-              {error && (
-                <div style={{
-                  width: '100%',
-                  backgroundColor: '#FEF2F2',
-                  border: '1px solid #FCA5A5',
-                  color: '#991B1B',
-                  padding: '10px 14px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  textAlign: 'left'
-                }}>
-                  ⚠️ {error}
-                </div>
-              )}
-
-              {/* Live GPS Lock Status */}
-              {gpsStatus && (
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '12px',
-                  color: '#2563EB',
-                  fontWeight: 600,
-                  backgroundColor: '#EFF6FF',
-                  padding: '6px 14px',
-                  borderRadius: '9999px'
-                }}>
-                  <RefreshCw size={13} className="spin-icon" />
-                  <span>{gpsStatus}</span>
-                </div>
-              )}
-
-              {/* Transmit CTA Button */}
-              {(() => {
-                const currentActiveKey = getCurrentSlotKey();
-                const activeState = getSlotState(currentActiveKey);
-                const isCompleted = activeState.status === 'completed';
-                const isMissed = activeState.status === 'missed';
-                const activeSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentActiveKey);
-
-                return (
-                  <div style={{ width: '100%', marginTop: '4px' }}>
-                    <Button
-                      type="button"
-                      variant={isCompleted ? 'secondary' : 'primary'}
-                      icon={isCompleted ? CheckCircle2 : Navigation}
-                      onClick={handleTransmitCoordinates}
-                      disabled={isTransmitting || isCompleted || isMissed}
-                      style={{
-                        width: '100%',
-                        padding: '12px 20px',
-                        fontSize: '14px',
-                        fontWeight: 700,
-                        backgroundColor: isCompleted ? '#F1F5F9' : '#2563EB',
-                        borderColor: isCompleted ? '#E2E8F0' : '#1D4ED8',
-                        color: isCompleted ? '#475569' : '#FFFFFF',
-                        boxShadow: isCompleted ? 'none' : '0 4px 14px rgba(37, 99, 235, 0.4)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px'
-                      }}
-                    >
-                      {isTransmitting
-                        ? 'Acquiring GPS Signal...'
-                        : isCompleted
-                        ? `✓ ${activeSlotObj?.label} Check-in Already Completed`
-                        : isMissed
-                        ? 'Check-in Windows Closed for Today'
-                        : `Transmit GPS for ${activeSlotObj?.label} Check-in`}
-                    </Button>
-
-                    {error && (
-                      <button
-                        type="button"
-                        onClick={handleTransmitCoordinates}
-                        className="btn btn-outline btn-sm"
-                        style={{ width: '100%', marginTop: '8px', fontSize: '12px' }}
-                      >
-                        <RefreshCw size={12} /> Try Again
-                      </button>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <div style={{ fontSize: '11px', color: '#94A3B8' }}>
-                GPS accuracy is automatically verified against project site coordinates.
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

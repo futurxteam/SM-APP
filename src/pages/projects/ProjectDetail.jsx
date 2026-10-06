@@ -18,6 +18,7 @@ import {
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
 import ScheduleTab from '../../components/projects/ScheduleTab';
+import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
@@ -125,6 +126,125 @@ export default function ProjectDetail() {
   const [sitePhotosFiles, setSitePhotosFiles] = useState([]);
   const [labourPaymentFile, setLabourPaymentFile] = useState(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  // Edit Project Details State (Admin / Project Manager)
+  const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [assignableStaff, setAssignableStaff] = useState({ projectManagers: [], siteSupervisors: [] });
+  const [editProjectForm, setEditProjectForm] = useState({
+    name: '',
+    code: '',
+    clientName: '',
+    location: '',
+    status: 'upcoming',
+    startDate: '',
+    endDate: '',
+    assignedManager: '',
+    assignedSupervisor: '',
+    description: '',
+    remarks: '',
+    coordinates: {
+      latitude: '',
+      longitude: '',
+      radiusMeters: 200,
+      address: '',
+    }
+  });
+
+  const handleOpenEditProject = async () => {
+    if (!project) return;
+    setEditProjectForm({
+      name: project.name || '',
+      code: project.code || '',
+      clientName: project.clientName || '',
+      location: project.location || '',
+      status: project.status || 'upcoming',
+      startDate: project.startDate ? dayjs(project.startDate).format('YYYY-MM-DD') : '',
+      endDate: project.endDate ? dayjs(project.endDate).format('YYYY-MM-DD') : '',
+      assignedManager: project.assignedManager?._id || project.assignedManager || '',
+      assignedSupervisor: project.assignedSupervisor?._id || project.assignedSupervisor || '',
+      description: project.description || '',
+      remarks: project.remarks || '',
+      coordinates: {
+        latitude: project.coordinates?.latitude ?? '',
+        longitude: project.coordinates?.longitude ?? '',
+        radiusMeters: project.coordinates?.radiusMeters || 200,
+        address: project.coordinates?.address || project.location || '',
+      }
+    });
+
+    setIsEditProjectModalOpen(true);
+
+    try {
+      const res = await api.get('/projects/staff/assignable');
+      const d = res.data?.data;
+      if (d) {
+        setAssignableStaff({
+          projectManagers: d.projectManagers || d.managers || [],
+          siteSupervisors: d.siteSupervisors || d.supervisors || [],
+        });
+      }
+    } catch {
+      try {
+        const uRes = await api.get('/admin/users');
+        const allUsers = uRes.data?.data || [];
+        setAssignableStaff({
+          projectManagers: allUsers.filter(u => u.role === 'project_manager'),
+          siteSupervisors: allUsers.filter(u => u.role === 'site_supervisor'),
+        });
+      } catch (err2) {
+        console.warn('Could not load staff list', err2);
+      }
+    }
+  };
+
+  const handleSaveProject = async (e) => {
+    e.preventDefault();
+    if (!editProjectForm.name.trim()) {
+      alert('Project Name is required.');
+      return;
+    }
+    if (!editProjectForm.code.trim()) {
+      alert('Project Code is required.');
+      return;
+    }
+
+    setIsSavingProject(true);
+    try {
+      const payload = {
+        name: editProjectForm.name.trim(),
+        code: editProjectForm.code.trim().toUpperCase(),
+        clientName: editProjectForm.clientName.trim(),
+        location: editProjectForm.location.trim(),
+        status: editProjectForm.status,
+        startDate: editProjectForm.startDate || null,
+        endDate: editProjectForm.endDate || null,
+        assignedManager: editProjectForm.assignedManager || null,
+        assignedSupervisor: editProjectForm.assignedSupervisor || null,
+        description: editProjectForm.description,
+        remarks: editProjectForm.remarks,
+      };
+
+      if (editProjectForm.coordinates.latitude !== '' && editProjectForm.coordinates.latitude != null) {
+        payload.coordinates = {
+          latitude: Number(editProjectForm.coordinates.latitude),
+          longitude: Number(editProjectForm.coordinates.longitude),
+          radiusMeters: Number(editProjectForm.coordinates.radiusMeters) || 200,
+          address: editProjectForm.coordinates.address || editProjectForm.location || '',
+        };
+      }
+
+      const res = await api.put(`/projects/${projectId}`, payload);
+      setProject(res.data.data);
+      setIsEditProjectModalOpen(false);
+      await loadProjectData();
+      alert('Project details updated successfully!');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update project details.');
+    } finally {
+      setIsSavingProject(false);
+    }
+  };
 
   useEffect(() => {
     loadProjectData();
@@ -908,6 +1028,15 @@ export default function ProjectDetail() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {!isSiteSupervisor() && (
+              <button
+                type="button"
+                onClick={handleOpenEditProject}
+                className="btn btn-primary btn-sm"
+              >
+                <Edit3 size={14} /> Edit Project
+              </button>
+            )}
             <button
               type="button"
               onClick={handleExportPdf}
@@ -1053,13 +1182,22 @@ export default function ProjectDetail() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <h3>Project Details</h3>
               {!isSiteSupervisor() && (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setActiveTab('location')}
-                >
-                  <MapPin size={14} /> Location & Tracking
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleOpenEditProject}
+                  >
+                    <Edit3 size={14} /> Edit Project Details
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setActiveTab('location')}
+                  >
+                    <MapPin size={14} /> Location & Tracking
+                  </button>
+                </div>
               )}
             </div>
             <div className="responsive-grid-2col" style={{ marginTop: '14px', fontSize: '14px' }}>
@@ -3702,6 +3840,236 @@ export default function ProjectDetail() {
             </table>
           </div>
         </div>
+      </Modal>
+
+      {/* Edit Project Details Modal (Admin / Project Manager) */}
+      <Modal
+        isOpen={isEditProjectModalOpen}
+        onClose={() => setIsEditProjectModalOpen(false)}
+        title={`Edit Project Details — ${project?.name || ''}`}
+        maxWidth="680px"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setIsEditProjectModalOpen(false)} disabled={isSavingProject}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveProject} disabled={isSavingProject}>
+              {isSavingProject ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSaveProject} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Name *</label>
+            <input
+              className="input"
+              value={editProjectForm.name}
+              onChange={(e) => setEditProjectForm({ ...editProjectForm, name: e.target.value })}
+              placeholder="e.g. Villa Renovation"
+              required
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Code *</label>
+              <input
+                className="input"
+                value={editProjectForm.code}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, code: e.target.value })}
+                placeholder="HYGGE-001"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Status</label>
+              <select
+                className="input"
+                value={editProjectForm.status}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, status: e.target.value })}
+              >
+                <option value="upcoming">Upcoming</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="completed">Completed</option>
+                <option value="on_hold">On Hold</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Client Name</label>
+              <input
+                className="input"
+                value={editProjectForm.clientName}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, clientName: e.target.value })}
+                placeholder="Client / Owner Name"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Location / City</label>
+              <input
+                className="input"
+                value={editProjectForm.location}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, location: e.target.value })}
+                placeholder="City / Area"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Start Date</label>
+              <input
+                type="date"
+                className="input"
+                value={editProjectForm.startDate}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, startDate: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>End Date</label>
+              <input
+                type="date"
+                className="input"
+                value={editProjectForm.endDate}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, endDate: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Manager</label>
+              <select
+                className="input"
+                value={editProjectForm.assignedManager}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, assignedManager: e.target.value })}
+              >
+                <option value="">Unassigned</option>
+                {(assignableStaff?.projectManagers || assignableStaff?.managers || []).map((m) => (
+                  <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Supervisor</label>
+              <select
+                className="input"
+                value={editProjectForm.assignedSupervisor}
+                onChange={(e) => setEditProjectForm({ ...editProjectForm, assignedSupervisor: e.target.value })}
+              >
+                <option value="">Unassigned</option>
+                {(assignableStaff?.siteSupervisors || assignableStaff?.supervisors || []).map((s) => (
+                  <option key={s._id} value={s._id}>{s.name} ({s.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Remarks / Scope</label>
+            <textarea
+              className="input"
+              rows={2}
+              value={editProjectForm.remarks}
+              onChange={(e) => setEditProjectForm({ ...editProjectForm, remarks: e.target.value })}
+              placeholder="Key notes, scope of work, remarks..."
+            />
+          </div>
+
+          {/* Site Coordinates & Geofence Picker */}
+          <div style={{
+            padding: '14px',
+            backgroundColor: '#F8FAFC',
+            borderRadius: '8px',
+            border: '1px solid var(--color-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MapPin size={15} color="var(--color-brand)" /> Site Coordinates & Geofence
+              </span>
+            </div>
+
+            <p className="text-muted" style={{ fontSize: '12px', margin: 0 }}>
+              Search location by typing or click/drag the pin on the map to set central site GPS coordinates.
+            </p>
+
+            <InteractiveLocationPicker
+              latitude={editProjectForm.coordinates.latitude}
+              longitude={editProjectForm.coordinates.longitude}
+              radiusMeters={editProjectForm.coordinates.radiusMeters}
+              address={editProjectForm.coordinates.address || editProjectForm.location}
+              onChange={({ latitude, longitude, address, radiusMeters }) => {
+                setEditProjectForm((prev) => ({
+                  ...prev,
+                  location: prev.location || address,
+                  coordinates: {
+                    ...prev.coordinates,
+                    latitude,
+                    longitude,
+                    address: address || prev.coordinates.address,
+                    radiusMeters: radiusMeters || prev.coordinates.radiusMeters,
+                  }
+                }));
+              }}
+              height="240px"
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Latitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="input"
+                  placeholder="e.g. 10.0323"
+                  value={editProjectForm.coordinates.latitude}
+                  onChange={(e) => setEditProjectForm({
+                    ...editProjectForm,
+                    coordinates: { ...editProjectForm.coordinates, latitude: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Longitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="input"
+                  placeholder="e.g. 76.3262"
+                  value={editProjectForm.coordinates.longitude}
+                  onChange={(e) => setEditProjectForm({
+                    ...editProjectForm,
+                    coordinates: { ...editProjectForm.coordinates, longitude: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Radius (m)</label>
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="200"
+                  title="Geofence radius in meters"
+                  value={editProjectForm.coordinates.radiusMeters}
+                  onChange={(e) => setEditProjectForm({
+                    ...editProjectForm,
+                    coordinates: { ...editProjectForm.coordinates, radiusMeters: e.target.value }
+                  })}
+                />
+              </div>
+            </div>
+          </div>
+        </form>
       </Modal>
     </div>
   );

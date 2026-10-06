@@ -10,6 +10,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
 import { getCurrentPosition } from '../../services/geolocationService';
 import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle } from 'lucide-react';
+import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 
 const scheduleBadgeVariant = (status) => ({
   completed: 'completed', in_progress: 'active', delayed: 'on_hold', on_hold: 'on_hold', not_started: 'upcoming'
@@ -389,79 +390,90 @@ export default function ProjectList() {
 
           {/* Site Coordinates & Geofence (Optional during project creation) */}
           <div style={{
-            padding: '12px',
+            padding: '14px',
             backgroundColor: '#F8FAFC',
-            borderRadius: '6px',
+            borderRadius: '8px',
             border: '1px solid var(--color-border)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
+            gap: '10px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-text-primary)' }}>
-                Site Coordinates & Geofence (Optional)
+              <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MapPin size={15} color="var(--color-brand)" /> Site Coordinates & Geofence (Optional)
               </span>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: '11px', padding: '3px 8px' }}
-                onClick={async () => {
-                  try {
-                    const pos = await getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-                    setFormData(prev => ({
-                      ...prev,
-                      coordinates: {
-                        ...prev.coordinates,
-                        latitude: Number(pos.latitude.toFixed(6)),
-                        longitude: Number(pos.longitude.toFixed(6)),
-                      }
-                    }));
-                  } catch (err) {
-                    alert(`GPS error: ${err.message || err}`);
-                  }
-                }}
-              >
-                <Navigation size={12} /> Detect My GPS
-              </button>
             </div>
 
+            <p className="text-muted" style={{ fontSize: '12px', margin: 0 }}>
+              Search location by typing or click/drag the pin on the map to set central site GPS coordinates.
+            </p>
+
+            <InteractiveLocationPicker
+              latitude={formData.coordinates.latitude}
+              longitude={formData.coordinates.longitude}
+              radiusMeters={formData.coordinates.radiusMeters}
+              address={formData.location}
+              onChange={({ latitude, longitude, address, radiusMeters }) => {
+                setFormData(prev => ({
+                  ...prev,
+                  location: address || prev.location,
+                  coordinates: {
+                    ...prev.coordinates,
+                    latitude,
+                    longitude,
+                    radiusMeters: radiusMeters || prev.coordinates.radiusMeters
+                  }
+                }));
+              }}
+              height="220px"
+            />
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px', gap: '8px' }}>
-              <input
-                type="number"
-                step="any"
-                className="input"
-                placeholder="Latitude (e.g. 12.9715)"
-                value={formData.coordinates.latitude}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  coordinates: { ...formData.coordinates, latitude: e.target.value }
-                })}
-              />
-              <input
-                type="number"
-                step="any"
-                className="input"
-                placeholder="Longitude (e.g. 77.5945)"
-                value={formData.coordinates.longitude}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  coordinates: { ...formData.coordinates, longitude: e.target.value }
-                })}
-              />
-              <input
-                type="number"
-                className="input"
-                placeholder="Radius (m)"
-                title="Geofence radius in meters"
-                value={formData.coordinates.radiusMeters}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  coordinates: { ...formData.coordinates, radiusMeters: e.target.value }
-                })}
-              />
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Latitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="input"
+                  placeholder="e.g. 10.0323"
+                  value={formData.coordinates.latitude}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    coordinates: { ...formData.coordinates, latitude: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Longitude</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="input"
+                  placeholder="e.g. 76.3262"
+                  value={formData.coordinates.longitude}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    coordinates: { ...formData.coordinates, longitude: e.target.value }
+                  })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '2px' }}>Radius (m)</label>
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="200"
+                  title="Geofence radius in meters"
+                  value={formData.coordinates.radiusMeters}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    coordinates: { ...formData.coordinates, radiusMeters: e.target.value }
+                  })}
+                />
+              </div>
             </div>
             <span className="text-muted" style={{ fontSize: '11px' }}>
-              Can also be configured by Admin or initialized by Supervisor on site.
+              Can also be updated anytime later by Admin or initialized by Supervisor on site.
             </span>
           </div>
         </form>

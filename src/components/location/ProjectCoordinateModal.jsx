@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import api from '../../services/api';
-import { getCurrentPosition } from '../../services/geolocationService';
+import InteractiveLocationPicker from './InteractiveLocationPicker';
 import { MapPin, Navigation, Compass, AlertCircle, ExternalLink } from 'lucide-react';
 
 export default function ProjectCoordinateModal({ isOpen, onClose, project, onSaved }) {
@@ -12,7 +12,6 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
     radiusMeters: 200,
     address: '',
   });
-  const [isDetecting, setIsDetecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -35,28 +34,20 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
     setError(null);
   }, [project, isOpen]);
 
-  const handleDetectGPS = async () => {
-    setIsDetecting(true);
-    setError(null);
-
-    try {
-      const pos = await getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-      setFormData((prev) => ({
-        ...prev,
-        latitude: Number(pos.latitude.toFixed(6)),
-        longitude: Number(pos.longitude.toFixed(6)),
-      }));
-      setIsDetecting(false);
-    } catch (err) {
-      setIsDetecting(false);
-      setError(err.message || 'Unable to retrieve GPS. Please verify location permissions.');
-    }
+  const handleLocationPickerChange = ({ latitude, longitude, address, radiusMeters }) => {
+    setFormData((prev) => ({
+      ...prev,
+      latitude,
+      longitude,
+      address: address || prev.address,
+      radiusMeters: radiusMeters || prev.radiusMeters,
+    }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.latitude || !formData.longitude) {
-      setError('Latitude and Longitude are mandatory.');
+      setError('Please select or specify site Latitude and Longitude.');
       return;
     }
 
@@ -85,11 +76,11 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
       isOpen={isOpen}
       onClose={onClose}
       title={`Configure Project Site Geofence — ${project?.name || ''}`}
-      maxWidth="560px"
+      maxWidth="620px"
     >
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <p className="text-muted" style={{ fontSize: '13px' }}>
-          Set the central GPS coordinates and geofence boundary perimeter for this project. Site supervisors' 9 AM, 12 PM, 3 PM, and 6 PM check-ins are compared against this site center.
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>
+          Search location by typing or click/drag the pin on the map to set central site coordinates and geofence boundary perimeter.
         </p>
 
         {error && (
@@ -109,34 +100,19 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
           </div>
         )}
 
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '12px',
-          backgroundColor: '#EFF6FF',
-          borderRadius: '6px',
-          border: '1px solid #BFDBFE',
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '13px', color: '#1E40AF' }}>Currently at the construction site?</div>
-            <div style={{ fontSize: '12px', color: '#3B82F6' }}>Auto-fill coordinates using your device GPS</div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            icon={Navigation}
-            onClick={handleDetectGPS}
-            disabled={isDetecting}
-          >
-            {isDetecting ? 'Acquiring GPS...' : 'Use Current GPS'}
-          </Button>
-        </div>
+        {/* Interactive Location Picker Map with Search & Pin */}
+        <InteractiveLocationPicker
+          latitude={formData.latitude}
+          longitude={formData.longitude}
+          radiusMeters={formData.radiusMeters}
+          address={formData.address}
+          onChange={handleLocationPickerChange}
+          height="280px"
+        />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div className="form-group">
-            <label className="form-label" style={{ fontWeight: 600 }}>Latitude <span style={{ color: 'red' }}>*</span></label>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Latitude <span style={{ color: 'red' }}>*</span></label>
             <input
               type="number"
               step="any"
@@ -149,7 +125,7 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
           </div>
 
           <div className="form-group">
-            <label className="form-label" style={{ fontWeight: 600 }}>Longitude <span style={{ color: 'red' }}>*</span></label>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Longitude <span style={{ color: 'red' }}>*</span></label>
             <input
               type="number"
               step="any"
@@ -163,7 +139,7 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
         </div>
 
         <div className="form-group">
-          <label className="form-label" style={{ fontWeight: 600 }}>
+          <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>
             Geofence Radius (Meters)
           </label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -173,68 +149,54 @@ export default function ProjectCoordinateModal({ isOpen, onClose, project, onSav
               max="5000"
               className="form-input"
               value={formData.radiusMeters}
-              onChange={(e) => setFormData({ ...formData, radiusMeters: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, radiusMeters: Number(e.target.value) })}
               style={{ flex: 1 }}
               required
             />
             <button
               type="button"
-              className={`btn btn-sm ${formData.radiusMeters === 100 ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${Number(formData.radiusMeters) === 100 ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFormData({ ...formData, radiusMeters: 100 })}
             >
               100m
             </button>
             <button
               type="button"
-              className={`btn btn-sm ${formData.radiusMeters === 200 ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${Number(formData.radiusMeters) === 200 ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFormData({ ...formData, radiusMeters: 200 })}
             >
               200m
             </button>
             <button
               type="button"
-              className={`btn btn-sm ${formData.radiusMeters === 500 ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${Number(formData.radiusMeters) === 500 ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFormData({ ...formData, radiusMeters: 500 })}
             >
               500m
             </button>
           </div>
-          <span className="text-muted" style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>
-            Supervisors within this radius are marked as "On Site". Beyond this, distance is reported in meters or km off site.
+          <span style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Supervisors inside this radius are verified as "On Site". Beyond this radius, distance deviation is recorded.
           </span>
         </div>
 
         <div className="form-group">
-          <label className="form-label" style={{ fontWeight: 600 }}>Site Address / Landmark</label>
+          <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Address / Landmark</label>
           <input
             type="text"
             className="form-input"
-            placeholder="e.g. Sector 4, Hygge Residency, Near Lake Road"
+            placeholder="e.g. Plot 42, Marine Drive, Kochi"
             value={formData.address}
             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
           />
         </div>
 
-        {formData.latitude && formData.longitude && (
-          <div style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ExternalLink size={13} color="var(--color-brand)" />
-            <a
-              href={`https://www.google.com/maps?q=${formData.latitude},${formData.longitude}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: 'var(--color-brand)', textDecoration: 'underline' }}
-            >
-              Preview coordinates on Google Maps
-            </a>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSaving}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" icon={MapPin} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Site Coordinates'}
+          <Button type="submit" variant="primary" disabled={isSaving}>
+            {isSaving ? 'Saving Coordinates...' : 'Save Site Geofence'}
           </Button>
         </div>
       </form>
