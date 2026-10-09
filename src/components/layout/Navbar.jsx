@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Building2, LogOut, User as UserIcon, Shield, ChevronDown, RefreshCw } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import AppUpdater from '../../services/appUpdater';
 
 export default function Navbar({ title }) {
@@ -239,41 +240,45 @@ export default function Navbar({ title }) {
 
               {/* Menu Actions */}
               <div style={{ padding: '6px' }}>
-                <button
-                  type="button"
-                  onClick={handleCheckUpdate}
-                  disabled={checkingUpdate}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '9px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: '#334155',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: checkingUpdate ? 'wait' : 'pointer',
-                    textAlign: 'left',
-                    transition: 'background-color 0.15s ease',
-                    marginBottom: '2px',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F1F5F9'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                >
-                  <RefreshCw
-                    size={15}
-                    color="#475569"
-                    style={{
-                      animation: checkingUpdate ? 'spin 1s linear infinite' : 'none',
-                    }}
-                  />
-                  <span>{checkingUpdate ? 'Checking Updates...' : 'Check for Updates'}</span>
-                </button>
+                {Capacitor.isNativePlatform() && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleCheckUpdate}
+                      disabled={checkingUpdate}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '9px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        color: '#334155',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: checkingUpdate ? 'wait' : 'pointer',
+                        textAlign: 'left',
+                        transition: 'background-color 0.15s ease',
+                        marginBottom: '2px',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F1F5F9'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <RefreshCw
+                        size={15}
+                        color="#475569"
+                        style={{
+                          animation: checkingUpdate ? 'spin 1s linear infinite' : 'none',
+                        }}
+                      />
+                      <span>{checkingUpdate ? 'Checking Updates...' : 'Check for Updates'}</span>
+                    </button>
 
-                <div style={{ height: '1px', backgroundColor: '#F1F5F9', margin: '4px 0' }} />
+                    <div style={{ height: '1px', backgroundColor: '#F1F5F9', margin: '4px 0' }} />
+                  </>
+                )}
 
                 <button
                   type="button"

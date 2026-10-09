@@ -1,0 +1,116 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java (JDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Determine Version & Tag
+        id: version_info
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            TAG="v$VERSION"
+            
+            # Check if tag already exists on remote
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists locally or remotely. Appending run number..."
+              TAG="v$VERSION-build.${{ github.run_number }}"
+            fi
+
+            echo "Creating and pushing automated tag $TAG..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG"
+            git push origin "$TAG" || true
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using Tag: $TAG"
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build Web Production Assets
+        run: npm run build
+
+      - name: Sync with Capacitor Android
+        run: npx cap sync android
+
+      - name: Configure Keystore Signing
+        run: |
+          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "Using production keystore from GitHub Secrets..."
+            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.jks
+            cat <<EOF > android/keystore.properties
+          storeFile=release.jks
+          storePassword=${{ secrets.RELEASE_KEYSTORE_PASSWORD || 'FutuRxteam@1232025' }}
+          keyAlias=${{ secrets.RELEASE_KEYSTORE_ALIAS || 'site-management' }}
+          keyPassword=${{ secrets.RELEASE_KEYSTORE_PASSWORD || 'FutuRxteam@1232025' }}
+          EOF
+          else
+            echo "No production keystore secret found. Generating temporary signing key..."
+            keytool -genkey -v -keystore android/app/release.jks -alias site-management -keyalg RSA -keysize 2048 -validity 10000 -storepass FutuRxteam@1232025 -keypass FutuRxteam@1232025 -dname "CN=FutuRx, OU=SiteManagement, O=Hygge, L=City, S=State, C=IN"
+            cat <<EOF > android/keystore.properties
+          storeFile=release.jks
+          storePassword=FutuRxteam@1232025
+          keyAlias=site-management
+          keyPassword=FutuRxteam@1232025
+          EOF
+          fi
+
+      - name: Build Signed Release APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Prepare APK Asset
+        run: |
+          TAG="${{ steps.version_info.outputs.tag }}"
+          APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+          APK_DEST="android/app/build/outputs/apk/release/SiteManagement-${TAG}.apk"
+          cp "$APK_SRC" "$APK_DEST"
+          echo "APK ready at $APK_DEST"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version_info.outputs.tag }}
+          name: Site Management ${{ steps.version_info.outputs.tag }}
+          files: android/app/build/outputs/apk/release/SiteManagement-*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
