@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { Building2, Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle } from 'lucide-react';
 import Button from '../../components/ui/Button';
 
 export default function Login() {
@@ -41,21 +41,29 @@ export default function Login() {
         {/* Brand Logo & Title */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{
-            width: '56px',
-            height: '56px',
-            borderRadius: '12px',
-            backgroundColor: 'var(--color-brand)',
-            color: '#FFFFFF',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: '12px',
-            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
+            backgroundColor: '#000000',
+            padding: '12px 24px',
+            borderRadius: '12px',
+            marginBottom: '14px',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)'
           }}>
-            <Building2 size={30} />
+            <img 
+              src="/logo.jpg" 
+              alt="Hygge Designs" 
+              style={{
+                height: '44px',
+                width: 'auto',
+                maxWidth: '220px',
+                display: 'block',
+                objectFit: 'contain'
+              }}
+            />
           </div>
 
-          <p style={{ fontSize: '13px', color: '#64748B', marginTop: '2px' }}>Site & Project Management System</p>
+          <p style={{ fontSize: '13px', color: '#64748B', marginTop: '2px', fontWeight: 500 }}>Site & Project Management System</p>
         </div>
 
         {error && (
