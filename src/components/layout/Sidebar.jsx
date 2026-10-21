@@ -8,7 +8,6 @@ import {
   UserCheck, 
   Activity, 
   LogOut, 
-  Building2,
   X
 } from 'lucide-react';
 
@@ -44,29 +43,24 @@ export default function Sidebar({ isOpen = false, onClose }) {
         justifyContent: 'space-between',
         gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '6px',
-            backgroundColor: 'var(--color-brand)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#FFF',
-            fontWeight: 700
-          }}>
-            <Building2 size={20} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '15px', color: '#FFF', letterSpacing: '-0.02em' }}>
-              HYGGE
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-sidebar-text)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Architects & Interiors
-            </div>
-          </div>
-        </div>
+        <NavLink 
+          to="/" 
+          onClick={handleLinkClick}
+          style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+        >
+          <img
+            src="/logo.jpeg"
+            alt="HYGGE DESIGNS"
+            style={{
+              height: '36px',
+              width: 'auto',
+              maxWidth: '180px',
+              objectFit: 'contain',
+              display: 'block',
+              borderRadius: '6px'
+            }}
+          />
+        </NavLink>
 
         <button
           onClick={onClose}

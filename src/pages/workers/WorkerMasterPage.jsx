@@ -12,6 +12,7 @@ export default function WorkerMasterPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -42,13 +43,17 @@ export default function WorkerMasterPage() {
 
   const handleCreateWorker = async (e) => {
     e.preventDefault();
+    if (isSubmittingWorker) return;
     try {
+      setIsSubmittingWorker(true);
       await api.post('/workers', formData);
       setIsModalOpen(false);
       setFormData({ name: '', phone: '', skill: 'General', workerType: 'daily_wage', dailyRate: 800, vendorName: '' });
       loadWorkers();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to create worker');
+    } finally {
+      setIsSubmittingWorker(false);
     }
   };
 
@@ -135,7 +140,7 @@ export default function WorkerMasterPage() {
       </Card>
 
       {/* Add Worker Modal */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Register Worker to Master" footer={<Button onClick={handleCreateWorker}>Save Worker</Button>}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Register Worker to Master" footer={<Button onClick={handleCreateWorker} isLoading={isSubmittingWorker} loadingText="Saving Worker...">Save Worker</Button>}>
         <form onSubmit={handleCreateWorker} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Worker Full Name *</label>

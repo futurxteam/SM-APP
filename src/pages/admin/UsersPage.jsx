@@ -13,15 +13,18 @@ export default function UsersPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
     name: '', email: '', password: '', role: 'site_supervisor', phone: ''
   });
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isSavingAssignments, setIsSavingAssignments] = useState(false);
   const [selectedUserForAssign, setSelectedUserForAssign] = useState(null);
   const [assignedProjectIds, setAssignedProjectIds] = useState([]);
 
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [selectedUserForPassword, setSelectedUserForPassword] = useState(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
 
@@ -47,13 +50,17 @@ export default function UsersPage() {
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
+    if (isCreatingUser) return;
     try {
+      setIsCreatingUser(true);
       await api.post('/admin/users', newUserForm);
       setIsCreateModalOpen(false);
       setNewUserForm({ name: '', email: '', password: '', role: 'site_supervisor', phone: '' });
       loadUsersAndProjects();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to create user');
+    } finally {
+      setIsCreatingUser(false);
     }
   };
 
@@ -64,7 +71,9 @@ export default function UsersPage() {
   };
 
   const handleSaveAssignments = async () => {
+    if (isSavingAssignments) return;
     try {
+      setIsSavingAssignments(true);
       await api.put(`/admin/users/${selectedUserForAssign._id}/assign-projects`, {
         projectIds: assignedProjectIds
       });
@@ -72,6 +81,8 @@ export default function UsersPage() {
       loadUsersAndProjects();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to assign projects');
+    } finally {
+      setIsSavingAssignments(false);
     }
   };
 
@@ -85,7 +96,9 @@ export default function UsersPage() {
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
+    if (isResettingPassword) return;
     try {
+      setIsResettingPassword(true);
       await api.put(`/admin/users/${selectedUserForPassword._id}/reset-password`, {
         newPassword: newPasswordInput
       });
@@ -94,6 +107,8 @@ export default function UsersPage() {
       alert('Password reset successfully!');
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -189,7 +204,7 @@ export default function UsersPage() {
       </Card>
 
       {/* Create User Modal */}
-      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Account" footer={<Button onClick={handleCreateUser}>Create User Account</Button>}>
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Account" footer={<Button onClick={handleCreateUser} isLoading={isCreatingUser} loadingText="Creating Account...">Create User Account</Button>}>
         <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Full Name *</label>
@@ -225,7 +240,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* Assign Projects Modal */}
-      <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={`Assign Projects: ${selectedUserForAssign?.name}`} footer={<Button onClick={handleSaveAssignments}>Save Project Assignments</Button>}>
+      <Modal isOpen={isAssignModalOpen} onClose={() => setIsAssignModalOpen(false)} title={`Assign Projects: ${selectedUserForAssign?.name}`} footer={<Button onClick={handleSaveAssignments} isLoading={isSavingAssignments} loadingText="Saving Assignments...">Save Project Assignments</Button>}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <p className="text-muted">Select projects this user can access on their dashboard:</p>
           {projects.map(p => (
@@ -243,7 +258,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* Password Reset Modal */}
-      <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title={`Reset Password: ${selectedUserForPassword?.name}`} footer={<Button onClick={handleResetPassword}>Reset Password</Button>}>
+      <Modal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} title={`Reset Password: ${selectedUserForPassword?.name}`} footer={<Button onClick={handleResetPassword} isLoading={isResettingPassword} loadingText="Resetting...">Reset Password</Button>}>
         <form onSubmit={handleResetPassword} className="form-group">
           <label>New Password *</label>
           <input type="password" className="input" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="Minimum 6 characters" required />

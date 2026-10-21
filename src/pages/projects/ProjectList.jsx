@@ -25,6 +25,7 @@ export default function ProjectList() {
   
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [users, setUsers] = useState([]);
   const [activeMenuId, setActiveMenuId] = useState(null);
   
@@ -81,7 +82,9 @@ export default function ProjectList() {
 
   const handleCreateProject = async (e) => {
     e.preventDefault();
+    if (isCreatingProject) return;
     try {
+      setIsCreatingProject(true);
       const payload = {
         ...formData,
         assignedSupervisors: formData.assignedSupervisors,
@@ -98,6 +101,8 @@ export default function ProjectList() {
       });
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to create project');
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
@@ -336,8 +341,8 @@ export default function ProjectList() {
         title="Create New Project"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleCreateProject}>Create Project</Button>
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isCreatingProject}>Cancel</Button>
+            <Button variant="primary" onClick={handleCreateProject} isLoading={isCreatingProject} loadingText="Creating Project...">Create Project</Button>
           </>
         }
       >

@@ -9,7 +9,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import {
-  Building2, Calendar, IndianRupee, Users, ShoppingBag,
+  Building2, Calendar, IndianRupee, Users, User, ShoppingBag,
   Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download,
   Plus, AlertCircle, CheckCircle, Clock, Upload, Trash2, Edit3, MapPin,
   Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image,
@@ -46,10 +46,12 @@ export default function ProjectDetail() {
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
+  const [isCreatingWorker, setIsCreatingWorker] = useState(false);
   const [newWorkerForm, setNewWorkerForm] = useState({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
 
   const [purchases, setPurchases] = useState([]);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState({
     category: 'Material',
     description: '',
@@ -71,6 +73,7 @@ export default function ProjectDetail() {
   const [isPettyCashLoading, setIsPettyCashLoading] = useState(false);
   const [refillRequests, setRefillRequests] = useState([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
     category: 'fuel',
     customCategoryName: '',
@@ -87,13 +90,17 @@ export default function ProjectDetail() {
   const [expenseFile, setExpenseFile] = useState(null);
 
   const [isRefillModalOpen, setIsRefillModalOpen] = useState(false);
+  const [isSubmittingRefill, setIsSubmittingRefill] = useState(false);
+  const [approvingRefillId, setApprovingRefillId] = useState(null);
   const [refillForm, setRefillForm] = useState({ requestedAmount: '', reason: '' });
   const [openingBalanceForm, setOpeningBalanceForm] = useState('');
   const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
+  const [isSettingOpeningBalance, setIsSettingOpeningBalance] = useState(false);
 
   const [materials, setMaterials] = useState(null);
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+  const [isSubmittingMaterial, setIsSubmittingMaterial] = useState(false);
   const [materialForm, setMaterialForm] = useState({
     selectedItemId: '',
     isNewMaterial: false,
@@ -489,7 +496,9 @@ export default function ProjectDetail() {
 
   const handleCreateWorker = async (e) => {
     if (e) e.preventDefault();
+    if (isCreatingWorker) return;
     try {
+      setIsCreatingWorker(true);
       const res = await api.post('/workers', { ...newWorkerForm, projectId });
       const worker = res.data.data;
 
@@ -528,6 +537,8 @@ export default function ProjectDetail() {
       // NOTE: Do not call loadAttendance() here as it would reload from DB and overwrite unsaved in-memory attendance!
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to create worker');
+    } finally {
+      setIsCreatingWorker(false);
     }
   };
 
@@ -543,6 +554,7 @@ export default function ProjectDetail() {
 
   const handleAddPurchase = async (e) => {
     e.preventDefault();
+    if (isSubmittingPurchase) return;
     if (!purchaseFile) {
       alert('Invoice image/document is required!');
       return;
@@ -565,6 +577,7 @@ export default function ProjectDetail() {
     formData.append('invoiceImage', purchaseFile);
 
     try {
+      setIsSubmittingPurchase(true);
       await api.post(`/projects/${projectId}/purchases`, formData);
       setIsPurchaseModalOpen(false);
       setPurchaseForm({
@@ -587,6 +600,8 @@ export default function ProjectDetail() {
     } catch (err) {
       console.error('Failed to add direct purchase:', err.response?.data || err);
       alert(err.response?.data?.message || 'Failed to add purchase');
+    } finally {
+      setIsSubmittingPurchase(false);
     }
   };
 
@@ -607,18 +622,23 @@ export default function ProjectDetail() {
   };
 
   const handleSetOpeningBalance = async () => {
+    if (isSettingOpeningBalance) return;
     try {
+      setIsSettingOpeningBalance(true);
       await api.post(`/projects/${projectId}/pettycash/opening`, { amount: openingBalanceForm });
       setIsOpeningModalOpen(false);
       setOpeningBalanceForm('');
       loadPettyCash();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to set opening balance');
+    } finally {
+      setIsSettingOpeningBalance(false);
     }
   };
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
+    if (isSubmittingExpense) return;
     if (!expenseFile) {
       alert('Receipt image is mandatory for petty cash expenses!');
       return;
@@ -650,6 +670,7 @@ export default function ProjectDetail() {
     }
 
     try {
+      setIsSubmittingExpense(true);
       await api.post(`/projects/${projectId}/pettycash/expenses`, formData);
       setIsExpenseModalOpen(false);
       setExpenseForm({
@@ -680,12 +701,16 @@ export default function ProjectDetail() {
       } else {
         alert(err.response?.data?.message || 'Failed to add expense');
       }
+    } finally {
+      setIsSubmittingExpense(false);
     }
   };
 
   const handleRequestRefill = async (e) => {
     e.preventDefault();
+    if (isSubmittingRefill) return;
     try {
+      setIsSubmittingRefill(true);
       await api.post(`/projects/${projectId}/pettycash/refill-request`, refillForm);
       setIsRefillModalOpen(false);
       setRefillForm({ requestedAmount: '', reason: '' });
@@ -693,15 +718,21 @@ export default function ProjectDetail() {
       alert('Cash refill request submitted to Admin/Accounts!');
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to request refill');
+    } finally {
+      setIsSubmittingRefill(false);
     }
   };
 
   const handleApproveRefill = async (requestId) => {
+    if (approvingRefillId) return;
     try {
+      setApprovingRefillId(requestId);
       await api.put(`/pettycash/refill-request/${requestId}/approve`, {});
       loadPettyCash();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to approve refill');
+    } finally {
+      setApprovingRefillId(null);
     }
   };
 
@@ -766,12 +797,14 @@ export default function ProjectDetail() {
 
   const handleAddMaterial = async (e) => {
     e.preventDefault();
+    if (isSubmittingMaterial) return;
     // Validate: must have either an existing item selected OR new item name
     if (!materialForm.selectedItemId && !materialForm.itemName?.trim()) {
       alert('Please select an existing material from the dropdown, or choose "+ Register New Material Item" and enter a name.');
       return;
     }
     try {
+      setIsSubmittingMaterial(true);
       const payload = {
         ...materialForm,
         source: materialForm.source || 'site_stock',
@@ -782,6 +815,8 @@ export default function ProjectDetail() {
       loadMaterials();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add material');
+    } finally {
+      setIsSubmittingMaterial(false);
     }
   };
 
@@ -1544,10 +1579,11 @@ export default function ProjectDetail() {
                     <Button
                       size="sm"
                       variant="primary"
-                      disabled={isSavingAttendance}
+                      isLoading={isSavingAttendance}
+                      loadingText="Saving Record..."
                       onClick={handleSaveAttendance}
                     >
-                      {isSavingAttendance ? 'Saving...' : "Save Today's Record"}
+                      Save Today's Record
                     </Button>
                   </div>
                 </div>
@@ -2177,7 +2213,7 @@ export default function ProjectDetail() {
                         <td><Badge variant={r.status}>{r.status}</Badge></td>
                         <td>
                           {r.status === 'pending' && (isSuperAdmin() || isAccounts()) ? (
-                            <Button size="sm" onClick={() => handleApproveRefill(r._id)}>Approve Refill</Button>
+                            <Button size="sm" onClick={() => handleApproveRefill(r._id)} isLoading={approvingRefillId === r._id} loadingText="Approving...">Approve Refill</Button>
                           ) : '—'}
                         </td>
                       </tr>
@@ -2999,9 +3035,11 @@ export default function ProjectDetail() {
                     variant="primary"
                     icon={Upload}
                     onClick={handleSaveClosureMultipart}
-                    disabled={isSavingClosure || (project.status === 'on_hold' && !isSuperAdmin())}
+                    isLoading={isSavingClosure}
+                    loadingText="Saving & Uploading Files..."
+                    disabled={project.status === 'on_hold' && !isSuperAdmin()}
                   >
-                    {isSavingClosure ? 'Saving & Uploading Files...' : 'Save Site Closure Progress & Upload Files'}
+                    Save Site Closure Progress & Upload Files
                   </Button>
                 </div>
               </div>
@@ -3021,7 +3059,7 @@ export default function ProjectDetail() {
         isOpen={isWorkerModalOpen}
         onClose={() => setIsWorkerModalOpen(false)}
         title="Quick Add Worker to Attendance"
-        footer={<Button variant="primary" onClick={handleCreateWorker}>Save & Add to Attendance</Button>}
+        footer={<Button variant="primary" onClick={handleCreateWorker} isLoading={isCreatingWorker} loadingText="Saving Worker...">Save & Add to Attendance</Button>}
       >
         <form onSubmit={handleCreateWorker} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Duplicate Worker Alert Banner */}
@@ -3113,7 +3151,7 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Direct Purchase */}
-      <Modal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} title="Add Direct Company Purchase" footer={<Button onClick={handleAddPurchase}>Add Direct Purchase</Button>}>
+      <Modal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} title="Add Direct Company Purchase" footer={<Button onClick={handleAddPurchase} isLoading={isSubmittingPurchase} loadingText="Adding Direct Purchase...">Add Direct Purchase</Button>}>
         <form onSubmit={handleAddPurchase} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{
             padding: '10px 14px',
@@ -3348,7 +3386,7 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Petty Cash Expense */}
-      <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title="Add Petty Cash Expense" footer={<Button onClick={handleAddExpense}>Record Expense</Button>}>
+      <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title="Add Petty Cash Expense" footer={<Button onClick={handleAddExpense} isLoading={isSubmittingExpense} loadingText="Recording Expense...">Record Expense</Button>}>
         <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Category *</label>
@@ -3556,7 +3594,7 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Refill Cash Request Modal */}
-      <Modal isOpen={isRefillModalOpen} onClose={() => setIsRefillModalOpen(false)} title="Request Cash Refill (Insufficient Funds)" footer={<Button onClick={handleRequestRefill}>Submit Refill Request</Button>}>
+      <Modal isOpen={isRefillModalOpen} onClose={() => setIsRefillModalOpen(false)} title="Request Cash Refill (Insufficient Funds)" footer={<Button onClick={handleRequestRefill} isLoading={isSubmittingRefill} loadingText="Submitting...">Submit Refill Request</Button>}>
         <form onSubmit={handleRequestRefill} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ padding: '10px', backgroundColor: '#FFFBEB', borderRadius: '4px', border: '1px solid #FCD34D', color: '#92400E', fontSize: '13px' }}>
             Current balance is insufficient for this expense. Please submit a refill request to Admin/Accounts.
@@ -3573,7 +3611,7 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Set Opening Balance Modal */}
-      <Modal isOpen={isOpeningModalOpen} onClose={() => setIsOpeningModalOpen(false)} title="Set Initial Opening Balance" footer={<Button onClick={handleSetOpeningBalance}>Save Balance</Button>}>
+      <Modal isOpen={isOpeningModalOpen} onClose={() => setIsOpeningModalOpen(false)} title="Set Initial Opening Balance" footer={<Button onClick={handleSetOpeningBalance} isLoading={isSettingOpeningBalance} loadingText="Saving...">Save Balance</Button>}>
         <div className="form-group">
           <label>Opening Balance Amount (₹) *</label>
           <input type="number" className="input" value={openingBalanceForm} onChange={(e) => setOpeningBalanceForm(e.target.value)} placeholder="50000" />
@@ -3581,7 +3619,7 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Material Modal */}
-      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Stock Material Item" footer={<Button onClick={handleAddMaterial}>Add Material Item</Button>}>
+      <Modal isOpen={isMaterialModalOpen} onClose={() => setIsMaterialModalOpen(false)} title="Add Site Stock Material Item" footer={<Button onClick={handleAddMaterial} isLoading={isSubmittingMaterial} loadingText="Adding Material...">Add Material Item</Button>}>
         <form onSubmit={handleAddMaterial} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="form-group">
             <label>Acquisition Source / Origin *</label>
@@ -3760,9 +3798,9 @@ export default function ProjectDetail() {
         title={`Record Usage — ${selectedUsageItem?.itemName || 'Material'}`}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setIsUsageModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSubmitMaterialUsage} disabled={isSubmittingUsage}>
-              {isSubmittingUsage ? 'Recording...' : 'Record Usage'}
+            <Button variant="secondary" onClick={() => setIsUsageModalOpen(false)} disabled={isSubmittingUsage}>Cancel</Button>
+            <Button variant="primary" onClick={handleSubmitMaterialUsage} isLoading={isSubmittingUsage} loadingText="Recording...">
+              Record Usage
             </Button>
           </>
         }
@@ -3929,8 +3967,8 @@ export default function ProjectDetail() {
             <Button variant="secondary" onClick={() => setIsEditProjectModalOpen(false)} disabled={isSavingProject}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSaveProject} disabled={isSavingProject}>
-              {isSavingProject ? 'Saving...' : 'Save Changes'}
+            <Button variant="primary" onClick={handleSaveProject} isLoading={isSavingProject} loadingText="Saving...">
+              Save Changes
             </Button>
           </>
         }
