@@ -200,31 +200,43 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
           </div>
         </Card>
 
-        {/* Assigned Supervisor */}
+        {/* Assigned Supervisor(s) */}
         <Card>
           <span className="text-muted" style={{ fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
-            Assigned Site Supervisor
+            Assigned Site Supervisor(s)
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              backgroundColor: '#EFF6FF',
-              color: 'var(--color-brand)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-            }}>
-              {supervisor?.name ? supervisor.name.charAt(0).toUpperCase() : <User size={20} />}
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '15px' }}>{supervisor?.name || 'Unassigned'}</div>
-              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                {supervisor?.phone || supervisor?.email || 'No contact provided'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+            {(data?.project?.assignedSupervisors?.length > 0
+              ? data.project.assignedSupervisors
+              : (supervisor ? [supervisor] : [])
+            ).map((s, idx) => (
+              <div key={s._id || idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  backgroundColor: '#EFF6FF',
+                  color: 'var(--color-brand)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  flexShrink: 0
+                }}>
+                  {s?.name ? s.name.charAt(0).toUpperCase() : <User size={16} />}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px' }}>{s?.name || 'Unassigned'}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                    {s?.phone || s?.email || 'No contact provided'}
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
+            {(!data?.project?.assignedSupervisors?.length && !supervisor) && (
+              <div style={{ fontSize: '13px', color: '#94A3B8' }}>Unassigned</div>
+            )}
           </div>
         </Card>
 

@@ -7,7 +7,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://site-management-be.onrender.com',
+        target: 'https://sm-app-2cox.onrender.com',
         changeOrigin: true,
         secure: false,
       },

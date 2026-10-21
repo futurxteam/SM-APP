@@ -9,7 +9,7 @@ import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
 import { getCurrentPosition } from '../../services/geolocationService';
-import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle, X } from 'lucide-react';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 
 const scheduleBadgeVariant = (status) => ({
@@ -39,6 +39,7 @@ export default function ProjectList() {
     endDate: '',
     assignedManager: '',
     assignedSupervisor: '',
+    assignedSupervisors: [],
     coordinates: {
       latitude: '',
       longitude: '',
@@ -81,13 +82,18 @@ export default function ProjectList() {
   const handleCreateProject = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/projects', formData);
+      const payload = {
+        ...formData,
+        assignedSupervisors: formData.assignedSupervisors,
+        assignedSupervisor: formData.assignedSupervisors[0] || formData.assignedSupervisor || null,
+      };
+      await api.post('/projects', payload);
       setIsModalOpen(false);
       fetchProjects(filter);
       setFormData({
         name: '', code: '', clientName: '', location: '',
         description: '', status: 'upcoming', startDate: '', endDate: '',
-        assignedManager: '', assignedSupervisor: '',
+        assignedManager: '', assignedSupervisor: '', assignedSupervisors: [],
         coordinates: { latitude: '', longitude: '', radiusMeters: 200 },
       });
     } catch (err) {
@@ -305,9 +311,13 @@ export default function ProjectList() {
               </div>
 
               <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                  <User size={12} style={{ display: 'inline', marginRight: '4px' }} />
-                  {p.assignedSupervisor?.name ? `Sup: ${p.assignedSupervisor.name}` : 'No Supervisor'}
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                  <User size={12} style={{ display: 'inline', flexShrink: 0 }} />
+                  {p.assignedSupervisors?.length > 0 ? (
+                    <span>Sups: {p.assignedSupervisors.map(s => s.name).join(', ')}</span>
+                  ) : (
+                    <span>{p.assignedSupervisor?.name ? `Sup: ${p.assignedSupervisor.name}` : 'No Supervisor'}</span>
+                  )}
                 </div>
 
                 <Button size="sm" variant="outline" icon={ArrowRight} onClick={() => navigate(`/projects/${p._id}`)}>
@@ -379,11 +389,50 @@ export default function ProjectList() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
            
 
-            <div className="form-group">
-              <label>Site Supervisor</label>
-              <select className="input" value={formData.assignedSupervisor} onChange={(e) => setFormData({ ...formData, assignedSupervisor: e.target.value })}>
-                <option value="">Unassigned</option>
-                {siteSupervisors.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label>Site Supervisor(s)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: formData.assignedSupervisors?.length > 0 ? '8px' : '0' }}>
+                {(formData.assignedSupervisors || []).map(id => {
+                  const sup = siteSupervisors.find(s => s._id === id);
+                  if (!sup) return null;
+                  return (
+                    <span key={id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      backgroundColor: '#EEF2FF', color: '#3730A3', padding: '4px 10px',
+                      borderRadius: '16px', fontSize: '12px', fontWeight: 600, border: '1px solid #C7D2FE'
+                    }}>
+                      {sup.name}
+                      <button
+                        type="button"
+                        onClick={() => setFormData({
+                          ...formData,
+                          assignedSupervisors: formData.assignedSupervisors.filter(sId => sId !== id)
+                        })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#4F46E5', display: 'flex' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+              <select
+                className="input"
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && !formData.assignedSupervisors?.includes(val)) {
+                    setFormData({
+                      ...formData,
+                      assignedSupervisors: [...(formData.assignedSupervisors || []), val]
+                    });
+                  }
+                }}
+              >
+                <option value="">+ Add Site Supervisor...</option>
+                {siteSupervisors
+                  .filter(u => !formData.assignedSupervisors?.includes(u._id))
+                  .map(u => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
               </select>
             </div>
           </div>

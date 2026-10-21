@@ -141,6 +141,7 @@ export default function ProjectDetail() {
     endDate: '',
     assignedManager: '',
     assignedSupervisor: '',
+    assignedSupervisors: [],
     description: '',
     remarks: '',
     coordinates: {
@@ -163,6 +164,7 @@ export default function ProjectDetail() {
       endDate: project.endDate ? dayjs(project.endDate).format('YYYY-MM-DD') : '',
       assignedManager: project.assignedManager?._id || project.assignedManager || '',
       assignedSupervisor: project.assignedSupervisor?._id || project.assignedSupervisor || '',
+      assignedSupervisors: (project.assignedSupervisors || []).map(s => s._id || s),
       description: project.description || '',
       remarks: project.remarks || '',
       coordinates: {
@@ -220,7 +222,8 @@ export default function ProjectDetail() {
         startDate: editProjectForm.startDate || null,
         endDate: editProjectForm.endDate || null,
         assignedManager: editProjectForm.assignedManager || null,
-        assignedSupervisor: editProjectForm.assignedSupervisor || null,
+        assignedSupervisor: editProjectForm.assignedSupervisors?.[0] || editProjectForm.assignedSupervisor || null,
+        assignedSupervisors: editProjectForm.assignedSupervisors || [],
         description: editProjectForm.description,
         remarks: editProjectForm.remarks,
       };
@@ -1206,7 +1209,12 @@ export default function ProjectDetail() {
               <div><strong>Duration:</strong> {project.durationDays ? `${project.durationDays} days` : 'N/A'}</div>
               <div><strong>Days Remaining:</strong> {project.daysRemaining ? `${project.daysRemaining} days` : 'N/A'}</div>
               <div><strong>Project Manager:</strong> {project.assignedManager?.name || 'Unassigned'}</div>
-              <div><strong>Site Supervisor:</strong> {project.assignedSupervisor?.name || 'Unassigned'}</div>
+              <div>
+                <strong>Site Supervisor(s):</strong>{' '}
+                {project.assignedSupervisors?.length > 0
+                  ? project.assignedSupervisors.map(s => s.name).join(', ')
+                  : (project.assignedSupervisor?.name || 'Unassigned')}
+              </div>
               <div style={{ gridColumn: 'span 2' }}>
                 <strong>Site Geofence:</strong>{' '}
                 {project.coordinates?.latitude ? (
@@ -1283,6 +1291,34 @@ export default function ProjectDetail() {
               </div>
             )}
           </div>
+
+          {/* Audit Attribution Banner */}
+          {attendanceData && (attendanceData.recordedBy || attendanceData.updatedBy) && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap',
+              padding: '10px 14px', background: '#F8FAFC', borderRadius: '8px',
+              border: '1px solid #E2E8F0', fontSize: '12px', color: '#475569'
+            }}>
+              {attendanceData.recordedBy && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <User size={13} color="#64748B" />
+                  <span>
+                    <strong>Marked by:</strong> {attendanceData.recordedBy.name} ({attendanceData.recordedBy.role?.replace('_', ' ') || 'Supervisor'})
+                    {attendanceData.createdAt && <span style={{ color: '#64748B', marginLeft: '4px' }}>at {dayjs(attendanceData.createdAt).format('DD MMM YYYY, hh:mm A')}</span>}
+                  </span>
+                </div>
+              )}
+              {attendanceData.updatedBy && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Clock size={13} color="#64748B" />
+                  <span>
+                    <strong>Last modified by:</strong> {attendanceData.updatedBy.name} ({attendanceData.updatedBy.role?.replace('_', ' ') || 'Supervisor'})
+                    {attendanceData.lastModifiedAt && <span style={{ color: '#64748B', marginLeft: '4px' }}>at {dayjs(attendanceData.lastModifiedAt).format('DD MMM YYYY, hh:mm A')}</span>}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* SUBTAB 1: DAILY ATTENDANCE */}
           {attendanceSubTab === 'daily' && (
@@ -1994,8 +2030,11 @@ export default function ProjectDetail() {
                               <span style={{ color: '#94A3B8', fontSize: '12px' }}>No Proof</span>
                             )}
                           </td>
-                          <td style={{ fontSize: '13px', color: '#64748B' }}>
-                            {p.addedBy?.name || 'Accounts/System'}
+                          <td style={{ fontSize: '12px' }}>
+                            <div style={{ fontWeight: 600, color: '#1E293B' }}>{p.addedBy?.name || 'Accounts/Admin'}</div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>
+                              {p.addedBy?.role ? `${p.addedBy.role.replace('_', ' ')} • ` : ''}{dayjs(p.createdAt || p.date).format('DD MMM YYYY, hh:mm A')}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -2070,7 +2109,10 @@ export default function ProjectDetail() {
                   ) : (
                     ledgerTransactions.map((t, idx) => (
                       <tr key={idx}>
-                        <td>{dayjs(t.date).format('DD-MM-YYYY')}</td>
+                        <td>
+                          <div>{dayjs(t.date).format('DD-MM-YYYY')}</div>
+                          <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(t.createdAt || t.date).format('hh:mm A')}</div>
+                        </td>
                         <td>
                           <Badge variant={t.type === 'expense' ? 'rejected' : 'approved'}>
                             {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
@@ -2084,7 +2126,12 @@ export default function ProjectDetail() {
                         <td>
                           {t.receiptImage ? <a href={t.receiptImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)' }}>View Receipt</a> : '—'}
                         </td>
-                        <td>{t.addedBy?.name || 'System'}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#1E293B' }}>{t.addedBy?.name || 'System/Admin'}</div>
+                          {t.addedBy?.role && (
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>{t.addedBy.role.replace('_', ' ')}</div>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -2116,7 +2163,15 @@ export default function ProjectDetail() {
                     refillRequests.map(r => (
                       <tr key={r._id}>
                         <td>{dayjs(r.createdAt).format('DD-MM-YYYY HH:mm')}</td>
-                        <td>{r.requestedBy?.name}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{r.requestedBy?.name || 'Supervisor'}</div>
+                          {r.requestedBy?.role && <div style={{ fontSize: '11px', color: '#64748B' }}>{r.requestedBy.role.replace('_', ' ')}</div>}
+                          {r.approvedBy && (
+                            <div style={{ fontSize: '11px', color: '#059669', marginTop: '2px' }}>
+                              ✓ Approved by {r.approvedBy.name} {r.approvedAt ? `(${dayjs(r.approvedAt).format('DD-MM HH:mm')})` : ''}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ fontWeight: 600 }}>₹{r.requestedAmount.toLocaleString('en-IN')}</td>
                         <td>{r.reason || '—'}</td>
                         <td><Badge variant={r.status}>{r.status}</Badge></td>
@@ -2429,6 +2484,12 @@ export default function ProjectDetail() {
       {activeTab === 'execution' && (
         <Card>
           <h3>Site Possession / Readiness Verification (5 Controls)</h3>
+          {execution?.updatedBy && (
+            <div style={{ fontSize: '12px', color: '#64748B', margin: '4px 0 12px 0' }}>
+              ℹ️ Verified by <strong>{execution.updatedBy.name}</strong> ({execution.updatedBy.role?.replace('_', ' ') || 'Supervisor'})
+              {execution.updatedAt && ` on ${dayjs(execution.updatedAt).format('DD MMM YYYY, hh:mm A')}`}
+            </div>
+          )}
 
           <div className="responsive-grid-2col" style={{ margin: '16px 0' }}>
             <div className="form-group">
@@ -2547,6 +2608,13 @@ export default function ProjectDetail() {
               <div className="mobile-flex-wrap" style={{ marginBottom: '16px', alignItems: 'center' }}>
                 <div>
                   <h3 style={{ margin: 0 }}>Project Closure Checklist (10 Requirements)</h3>
+                  {closure?.startedBy && (
+                    <div style={{ fontSize: '12px', color: '#64748B', marginTop: '4px' }}>
+                      Procedure started by <strong>{closure.startedBy.name}</strong> ({closure.startedBy.role?.replace('_', ' ') || 'Supervisor'})
+                      {closure.startedAt && ` on ${dayjs(closure.startedAt).format('DD MMM YYYY, hh:mm A')}`}
+                      {closure.updatedBy && ` • Last saved by ${closure.updatedBy.name}`}
+                    </div>
+                  )}
                   <p className="text-muted" style={{ fontSize: '13px', marginTop: '4px' }}>
                     Completed: <strong>{closure?.completedCount || 0}/10</strong> items fulfilled
                   </p>
@@ -3788,24 +3856,28 @@ export default function ProjectDetail() {
             <table className="table" style={{ fontSize: '13px' }}>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Date & Time</th>
                   <th>Type</th>
                   <th>Source</th>
                   <th>Quantity</th>
+                  <th>Recorded By</th>
                   <th>Remarks / Reason</th>
                 </tr>
               </thead>
               <tbody>
                 {!selectedHistoryItem?.transactions || selectedHistoryItem.transactions.length === 0 ? (
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', color: '#94A3B8', padding: '20px' }}>
+                    <td colSpan="6" style={{ textAlign: 'center', color: '#94A3B8', padding: '20px' }}>
                       No transactions recorded yet.
                     </td>
                   </tr>
                 ) : (
                   [...selectedHistoryItem.transactions].reverse().map((tx, idx) => (
                     <tr key={idx}>
-                      <td>{dayjs(tx.date).format('DD MMM YYYY')}</td>
+                      <td>
+                        <div>{dayjs(tx.date).format('DD MMM YYYY')}</div>
+                        <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(tx.createdAt || tx.date).format('hh:mm A')}</div>
+                      </td>
                       <td>
                         <Badge variant={tx.type === 'purchase' || tx.type === 'receipt' || tx.type === 'received' ? 'completed' : (tx.type === 'usage' ? 'pending' : 'active')}>
                           {tx.type.toUpperCase()}
@@ -3831,6 +3903,10 @@ export default function ProjectDetail() {
                       </td>
                       <td style={{ fontWeight: 600, color: tx.quantity > 0 ? '#16A34A' : '#DC2626' }}>
                         {tx.quantity > 0 ? `+${tx.quantity}` : tx.quantity} {selectedHistoryItem.unit || ''}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, color: '#1E293B' }}>{tx.recordedBy?.name || 'Site Supervisor'}</div>
+                        {tx.recordedBy?.role && <div style={{ fontSize: '11px', color: '#64748B' }}>{tx.recordedBy.role.replace('_', ' ')}</div>}
                       </td>
                       <td>{tx.remarks || tx.reason || '—'}</td>
                     </tr>
@@ -3957,17 +4033,52 @@ export default function ProjectDetail() {
               </select>
             </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Supervisor</label>
+            <div className="form-group" style={{ gridColumn: 'span 2' }}>
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Supervisor(s)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: editProjectForm.assignedSupervisors?.length > 0 ? '8px' : '0' }}>
+                {(editProjectForm.assignedSupervisors || []).map((id) => {
+                  const staffList = assignableStaff?.siteSupervisors || assignableStaff?.supervisors || [];
+                  const sup = staffList.find(s => s._id === id);
+                  return (
+                    <span key={id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      backgroundColor: '#EEF2FF', color: '#3730A3', padding: '4px 10px',
+                      borderRadius: '16px', fontSize: '12px', fontWeight: 600, border: '1px solid #C7D2FE'
+                    }}>
+                      {sup?.name || id}
+                      <button
+                        type="button"
+                        onClick={() => setEditProjectForm({
+                          ...editProjectForm,
+                          assignedSupervisors: editProjectForm.assignedSupervisors.filter(sId => sId !== id)
+                        })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#4F46E5', display: 'flex' }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
               <select
                 className="input"
-                value={editProjectForm.assignedSupervisor}
-                onChange={(e) => setEditProjectForm({ ...editProjectForm, assignedSupervisor: e.target.value })}
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val && !editProjectForm.assignedSupervisors?.includes(val)) {
+                    setEditProjectForm({
+                      ...editProjectForm,
+                      assignedSupervisors: [...(editProjectForm.assignedSupervisors || []), val]
+                    });
+                  }
+                }}
               >
-                <option value="">Unassigned</option>
-                {(assignableStaff?.siteSupervisors || assignableStaff?.supervisors || []).map((s) => (
-                  <option key={s._id} value={s._id}>{s.name} ({s.email})</option>
-                ))}
+                <option value="">+ Add Site Supervisor...</option>
+                {(assignableStaff?.siteSupervisors || assignableStaff?.supervisors || [])
+                  .filter(s => !editProjectForm.assignedSupervisors?.includes(s._id))
+                  .map((s) => (
+                    <option key={s._id} value={s._id}>{s.name} ({s.email})</option>
+                  ))}
               </select>
             </div>
           </div>
