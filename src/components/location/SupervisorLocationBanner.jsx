@@ -3,8 +3,8 @@ import { useAuthStore } from '../../store/useAuthStore';
 import api from '../../services/api';
 import { getCurrentPosition } from '../../services/geolocationService';
 import Button from '../ui/Button';
-import { 
-  MapPin, Navigation, AlertTriangle, CheckCircle2, 
+import {
+  MapPin, Navigation, AlertTriangle, CheckCircle2,
   Clock, ShieldAlert, RefreshCw, Layers, ShieldCheck,
   Building2, Crosshair, XCircle, X
 } from 'lucide-react';
@@ -90,8 +90,8 @@ export default function SupervisorLocationBanner() {
         const localHour = new Date().getHours();
         const localCurrentSlot =
           localHour < 12 ? '9am' :
-          localHour < 15 ? '12pm' :
-          localHour < 18 ? '3pm' : '6pm';
+            localHour < 15 ? '12pm' :
+              localHour < 18 ? '3pm' : '6pm';
 
         const slotCutoffs = { '9am': 12, '12pm': 15, '3pm': 18, '6pm': 21 };
         const allSlots = ['9am', '12pm', '3pm', '6pm'];
@@ -106,36 +106,38 @@ export default function SupervisorLocationBanner() {
         const isCurrentSlotPending = !recordedSlots.includes(localCurrentSlot);
 
         const slotLabels = {
-          '9am': 'Morning (9AM) Slot – Location Declaration',
-          '12pm': 'Mid-Day (12PM) Slot – Location Declaration',
-          '3pm': 'Afternoon (3PM) Slot – Location Declaration',
-          '6pm': 'Evening (6PM) Slot – Location Declaration',
+          '9am': 'Morning (9 AM) Slot',
+          '12pm': 'Mid-Day (12 PM) Slot',
+          '3pm': 'Afternoon (3 PM) Slot',
+          '6pm': 'Evening (6 PM) Slot',
         };
 
         // Check if project scheduled time period has finished (past endDate)
         const isPeriodFinished = data.project?.endDate && new Date() > new Date(new Date(data.project.endDate).setHours(23, 59, 59, 999));
 
-        const isTargetPending = isPeriodFinished
+        // If supervisor already marked attendance at ANY project for this slot, they are done for this interval!
+        const isDoneForInterval = Boolean(data.isDoneForInterval || data.markedOnAnotherSite);
+        const isOverallPending = isPeriodFinished
           ? false
-          : (data.project?.siteCoordinatesMissing
-              ? true
-              : (data.project?.pending !== undefined ? data.project.pending : isCurrentSlotPending));
+          : (!isDoneForInterval && (data.pending !== undefined ? data.pending : isCurrentSlotPending));
 
         const validAvailableProjects = (data.availableProjects || data.projects || []).filter(p => {
           if (!p.endDate) return true;
           return new Date() <= new Date(new Date(p.endDate).setHours(23, 59, 59, 999));
         });
 
-        const validPendingProjects = (data.pendingProjects || (isTargetPending ? [data.project] : [])).filter(p => {
-          if (!p.endDate) return true;
-          return new Date() <= new Date(new Date(p.endDate).setHours(23, 59, 59, 999));
-        });
+        const validPendingProjects = isOverallPending
+          ? (data.pendingProjects || [data.project]).filter(p => {
+            if (!p.endDate) return true;
+            return new Date() <= new Date(new Date(p.endDate).setHours(23, 59, 59, 999));
+          })
+          : [];
 
         setPendingState({
-          pending: validPendingProjects.length > 0,
-          pendingCount: validPendingProjects.length,
+          pending: isOverallPending && validPendingProjects.length > 0,
+          pendingCount: isOverallPending ? validPendingProjects.length : 0,
           pendingProjects: validPendingProjects,
-          pendingSlot: isTargetPending ? localCurrentSlot : null,
+          pendingSlot: isOverallPending ? localCurrentSlot : null,
           slotLabel: slotLabels[localCurrentSlot] || data.project?.slotLabel || data.slotLabel || '',
           currentSlot: localCurrentSlot,
           missedSlots: localMissedSlots,
@@ -143,9 +145,14 @@ export default function SupervisorLocationBanner() {
           siteCoordinatesMissing: isPeriodFinished ? false : !!data.project?.siteCoordinatesMissing,
           project: data.project || null,
           availableProjects: validAvailableProjects,
+          coveredByCoSupervisor: data.coveredByCoSupervisor || data.project?.coveredByCoSupervisor || null,
+          hasAtLeastOneOnSiteAlready: !!data.hasAtLeastOneOnSiteAlready,
+          onSiteSupervisorName: data.onSiteSupervisorName || null,
+          markedOnAnotherSite: data.markedOnAnotherSite || null,
+          isDoneForInterval,
         });
 
-        if (isCurrentSlotPending && !isPeriodFinished) {
+        if (isCurrentSlotPending && !isPeriodFinished && isOverallPending) {
           setSelectedSlot(localCurrentSlot);
         }
 
@@ -337,6 +344,35 @@ export default function SupervisorLocationBanner() {
     }
   };
 
+  const [isSubmittingAnotherSite, setIsSubmittingAnotherSite] = useState(false);
+
+  // Skip is validated by the server: it registers only if another site was already marked for this slot
+  const handleDeclareAnotherSite = async () => {
+    if (!pendingState.project?._id) return;
+    setIsSubmittingAnotherSite(true);
+    setError(null);
+    try {
+      const res = await api.post('/location/declare-another-site', {
+        projectId: pendingState.project._id,
+      });
+      const payload = res?.data || res;
+      if (payload?.registered) {
+        setIsModalDismissed(true);
+        setIsManualOpen(false);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('hygge:location-updated'));
+        }
+        await checkPendingLocation();
+      } else {
+        setError(payload?.message || 'Skip not registered. This site stays pending.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not record skip.');
+    } finally {
+      setIsSubmittingAnotherSite(false);
+    }
+  };
+
   if (!isSiteSupervisor()) {
     return null;
   }
@@ -346,6 +382,7 @@ export default function SupervisorLocationBanner() {
 
   const showFloatingButton =
     !isModalVisible &&
+    pendingState.pending &&
     (!!pendingState.project?._id || (pendingState.availableProjects && pendingState.availableProjects.length > 0));
 
   const floatingQuickButton = showFloatingButton && (
@@ -389,79 +426,103 @@ export default function SupervisorLocationBanner() {
 
   return (
     <>
-      {/* ── TOP PERSISTENT NOTIFICATION STRIP: ALWAYS VISIBLE AT TOP OF EVERY PAGE WHEN NOT FILLED ── */}
+      {/* ── TOP NOTIFICATION: MODERN FLOATING PILL ── */}
       {pendingState.pending && (
         <div style={{
-          backgroundColor: '#FFFBEB',
-          borderBottom: '1px solid #FCD34D',
-          padding: '10px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          color: '#92400E',
           position: 'sticky',
-          top: 0,
+          top: '12px',
           zIndex: 89,
-          boxShadow: '0 2px 4px rgba(0,0,0,0.04)'
+          padding: '0 16px',
+          pointerEvents: 'none',
+          marginBottom: '10px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <ShieldAlert size={18} color="#D97706" style={{ flexShrink: 0 }} />
-            <div style={{ fontSize: '13px', lineHeight: '1.4' }}>
-              <span style={{ fontWeight: 700, color: '#B45309' }}>
-                Site Location Check-in Not Filled:
-              </span>{' '}
-              <span>
-                {(pendingState.pendingProjects?.length > 0
-                  ? pendingState.pendingProjects
-                  : [pendingState.project]
-                ).filter(Boolean).map(p => `${p.name}${p.code ? ` (${p.code})` : ''}`).join(', ')}
-              </span>
+          <div style={{
+            pointerEvents: 'auto',
+            maxWidth: '820px',
+            margin: '0 auto',
+            backgroundColor: '#FFFFFF',
+            border: '1.5px solid #FDE68A',
+            borderRadius: '16px',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            boxShadow: '0 8px 24px -4px rgba(217, 119, 6, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.04)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: '1 1 auto', minWidth: '240px' }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                backgroundColor: '#FEF3C7',
+                border: '1px solid #FDE68A',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#D97706',
+                flexShrink: 0
+              }}>
+                <ShieldAlert size={18} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#92400E' }}>
+                    Site Location Check-in Required
+                  </span>
+                  <span style={{
+                    backgroundColor: '#FEE2E2',
+                    color: '#DC2626',
+                    border: '1px solid #FECACA',
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase'
+                  }}>
+                    NOT FILLED
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>
+                  {(pendingState.pendingProjects?.length > 0
+                    ? pendingState.pendingProjects
+                    : [pendingState.project]
+                  ).filter(Boolean).map(p => `${p.name}${p.code ? ` (${p.code})` : ''}`).join(', ')}
+                </div>
+              </div>
             </div>
 
-            <span style={{
-              backgroundColor: '#FEE2E2',
-              color: '#DC2626',
-              border: '1px solid #FECACA',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase'
-            }}>
-              NOT FILLED
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                const targetId = pendingState.pendingProjects?.[0]?._id || pendingState.project?._id;
-                setIsModalDismissed(false);
-                setIsManualOpen(true);
-                checkPendingLocation(targetId);
-              }}
-              className="btn btn-sm"
-              style={{
-                backgroundColor: '#D97706',
-                color: '#FFFFFF',
-                border: 'none',
-                padding: '5px 14px',
-                fontSize: '12px',
-                fontWeight: 600,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              <MapPin size={13} />
-              <span>Check-in Now</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetId = pendingState.pendingProjects?.[0]?._id || pendingState.project?._id;
+                  setIsModalDismissed(false);
+                  setIsManualOpen(true);
+                  checkPendingLocation(targetId);
+                }}
+                style={{
+                  backgroundColor: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  padding: '7px 16px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(217, 119, 6, 0.25)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <MapPin size={13} />
+                <span>Check-in Now</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -469,13 +530,14 @@ export default function SupervisorLocationBanner() {
       {/* Floating Action Button */}
       {floatingQuickButton}
 
-      {/* ── MODAL OVERLAY: FULL POPUP (NOW ALWAYS CLOSABLE) ── */}
+      {/* ── MODAL OVERLAY: MODERN TEMPLATE DESIGN ── */}
       {isModalVisible && (
         <div className="supervisor-location-overlay" style={{
           position: 'fixed',
           inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.75)',
-          backdropFilter: 'blur(8px)',
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
           zIndex: 9999,
           display: 'flex',
           alignItems: 'center',
@@ -484,18 +546,10 @@ export default function SupervisorLocationBanner() {
           overflowY: 'auto'
         }}>
           <div className="location-modal-card" style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: '16px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
-            maxWidth: '540px',
-            width: '100%',
-            padding: '24px',
-            textAlign: 'center',
-            position: 'relative',
-            maxHeight: '90vh',
-            overflowY: 'auto'
+            maxHeight: '92vh',
+            overflowY: 'auto',
           }}>
-            {/* Close Button: Always available so user is never trapped */}
+            {/* Close Button */}
             <button
               type="button"
               onClick={() => {
@@ -504,10 +558,10 @@ export default function SupervisorLocationBanner() {
               }}
               style={{
                 position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: '#F1F5F9',
-                border: 'none',
+                top: '18px',
+                right: '18px',
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
                 borderRadius: '50%',
                 width: '32px',
                 height: '32px',
@@ -516,39 +570,40 @@ export default function SupervisorLocationBanner() {
                 justifyContent: 'center',
                 cursor: 'pointer',
                 color: '#64748B',
-                transition: 'background 0.15s ease'
+                transition: 'all 0.15s ease'
               }}
               aria-label="Close"
               title="Close modal (notification remains at top of page)"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
 
             {successResult ? (
               /* CASE 1: SUCCESS CONFIRMATION */
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '16px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '16px 0', textAlign: 'center' }}>
                 <div style={{
-                  width: '72px',
-                  height: '72px',
-                  borderRadius: '50%',
-                  backgroundColor: '#D1FAE5',
-                  border: '3px solid #10B981',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '20px',
+                  backgroundColor: '#ECFDF5',
+                  border: '2px solid #10B981',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#059669',
-                  boxShadow: '0 8px 20px rgba(16, 185, 129, 0.25)',
+                  boxShadow: '0 8px 20px rgba(16, 185, 129, 0.2)',
                   animation: 'scaleUpCard 0.3s ease'
                 }}>
-                  <CheckCircle2 size={40} />
+                  <CheckCircle2 size={36} />
                 </div>
 
                 <div>
                   <div style={{
                     display: 'inline-block',
-                    padding: '4px 12px',
+                    padding: '3px 12px',
                     borderRadius: '9999px',
                     backgroundColor: '#ECFDF5',
+                    border: '1px solid #A7F3D0',
                     color: '#047857',
                     fontSize: '12px',
                     fontWeight: 700,
@@ -570,8 +625,8 @@ export default function SupervisorLocationBanner() {
                       gap: '6px',
                       padding: '6px 14px',
                       backgroundColor: '#F8FAFC',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: '6px',
+                      border: '1.5px solid #E2E8F0',
+                      borderRadius: '12px',
                       fontSize: '12px',
                       color: '#334155',
                       marginTop: '8px'
@@ -588,181 +643,309 @@ export default function SupervisorLocationBanner() {
                   gap: '8px',
                   fontSize: '12px',
                   color: '#64748B',
-                  marginTop: '12px'
+                  marginTop: '8px'
                 }}>
-                  <RefreshCw size={14} className="spin-icon" />
+                  <RefreshCw size={13} className="spin-icon" />
                   <span>Updating site compliance...</span>
                 </div>
               </div>
             ) : pendingState.siteCoordinatesMissing ? (
-              /* CASE 2: MANDATORY INITIAL SITE COORDINATE CONFIGURATION */
+              /* CASE 2: MANDATORY INITIAL SITE COORDINATE CONFIGURATION (TEMPLATE STYLE) */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Header: Centered with Generous Spacing */}
                 <div style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
-                  boxShadow: '0 8px 20px rgba(220, 38, 38, 0.35)',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFF',
-                  margin: '0 auto'
+                  textAlign: 'center',
+                  paddingTop: '8px',
+                  paddingBottom: '12px',
+                  gap: '12px',
+                  width: '100%',
                 }}>
-                  <ShieldAlert size={34} />
-                </div>
-
-                <div>
+                  {/* Centered Icon Container */}
                   <div style={{
-                    display: 'inline-block',
-                    padding: '3px 10px',
-                    borderRadius: '4px',
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '18px',
+                    backgroundColor: '#FEF2F2',
+                    border: '1.5px solid #FECACA',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#DC2626',
+                    boxShadow: '0 4px 14px rgba(220, 38, 38, 0.12)',
+                  }}>
+                    <ShieldAlert size={28} />
+                  </div>
+
+                  {/* Centered Single-Line Badge */}
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '5px 16px',
+                    borderRadius: '9999px',
                     backgroundColor: '#FEE2E2',
+                    border: '1px solid #FECACA',
                     color: '#991B1B',
                     fontSize: '11px',
                     fontWeight: 700,
                     textTransform: 'uppercase',
-                    marginBottom: '6px'
+                    letterSpacing: '0.04em',
+                    whiteSpace: 'nowrap',
+                    lineHeight: '1.2',
                   }}>
-                    Initial Site Setup
+                    Initial Setup Required
                   </div>
-                  <h2 style={{ fontSize: '19px', fontWeight: 700, color: '#0F172A', margin: 0 }}>
-                    Set Project Site Coordinates
-                  </h2>
-                  <p style={{ fontSize: '13px', color: '#64748B', marginTop: '6px', lineHeight: '1.4' }}>
-                    Project <strong>{pendingState.project?.name}</strong> has no site coordinates defined. Please configure coordinates to enable geofence check-ins.
-                  </p>
+
+                  {/* Centered Title & Subtitle */}
+                  <div style={{ textAlign: 'center' }}>
+                    <h2 style={{
+                      fontSize: '20px',
+                      fontWeight: 800,
+                      color: '#0F172A',
+                      margin: '0 0 6px 0',
+                      letterSpacing: '-0.3px',
+                      lineHeight: '1.25'
+                    }}>
+                      Set Project Site Coordinates
+                    </h2>
+                    <p style={{
+                      fontSize: '13px',
+                      color: '#64748B',
+                      margin: 0,
+                      lineHeight: '1.45',
+                      maxWidth: '380px'
+                    }}>
+                      {pendingState.project?.name}
+                    </p>
+                  </div>
                 </div>
 
                 {error && (
-                  <div style={{
+                  <div className="template-helper-text error" style={{
                     backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    color: '#991B1B',
-                    padding: '10px 14px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    textAlign: 'left'
+                    border: '1px solid #FECACA',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px'
                   }}>
                     ⚠️ {error}
                   </div>
                 )}
 
                 {gpsStatus && (
-                  <div style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600 }}>
-                    {gpsStatus}
+                  <div style={{ fontSize: '12px', color: '#2563EB', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <RefreshCw size={13} className="spin-icon" />
+                    <span>{gpsStatus}</span>
                   </div>
                 )}
 
-                <form onSubmit={handleSetSiteCoordinates} style={{ display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      icon={Navigation}
-                      onClick={handleCaptureCurrentGPSAsSite}
-                      style={{ width: '100%' }}
-                    >
-                      Capture Current Device GPS
-                    </Button>
-                  </div>
+                <button
+                  type="button"
+                  onClick={handleCaptureCurrentGPSAsSite}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    height: '42px',
+                    backgroundColor: '#F8FAFC',
+                    border: '1.5px solid #CBD5E1',
+                    borderRadius: '14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1E293B',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Navigation size={15} color="#2563EB" />
+                  <span>Capture Device Current GPS</span>
+                </button>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Latitude</label>
+                <form onSubmit={handleSetSiteCoordinates} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Latitude Input - Template Styled */}
+                  <div className="template-input-group">
+                    <label className="template-input-label">
+                      <span>Site Latitude</span>
+                    </label>
+                    <div className="template-input-box">
+                      <span className="template-input-icon"><MapPin size={16} /></span>
                       <input
                         type="number"
                         step="any"
                         placeholder="e.g. 12.971598"
-                        className="form-control"
-                        style={{ width: '100%', fontSize: '13px', padding: '8px' }}
+                        className="template-input-control"
                         value={siteSetupForm.latitude}
                         onChange={(e) => setSiteSetupForm({ ...siteSetupForm, latitude: e.target.value })}
                         required
                       />
                     </div>
-                    <div>
-                      <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Site Longitude</label>
+                    <div className="template-helper-text">Decimal latitude coordinate of project center.</div>
+                  </div>
+
+                  {/* Longitude Input - Template Styled */}
+                  <div className="template-input-group">
+                    <label className="template-input-label">
+                      <span>Site Longitude</span>
+                    </label>
+                    <div className="template-input-box">
+                      <span className="template-input-icon"><Navigation size={16} /></span>
                       <input
                         type="number"
                         step="any"
                         placeholder="e.g. 77.594566"
-                        className="form-control"
-                        style={{ width: '100%', fontSize: '13px', padding: '8px' }}
+                        className="template-input-control"
                         value={siteSetupForm.longitude}
                         onChange={(e) => setSiteSetupForm({ ...siteSetupForm, longitude: e.target.value })}
                         required
                       />
                     </div>
+                    <div className="template-helper-text">Decimal longitude coordinate of project center.</div>
                   </div>
 
-                  <div>
-                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>Geofence Radius (Meters)</label>
-                    <input
-                      type="number"
-                      placeholder="200"
-                      className="form-control"
-                      style={{ width: '100%', fontSize: '13px', padding: '8px' }}
-                      value={siteSetupForm.radiusMeters}
-                      onChange={(e) => setSiteSetupForm({ ...siteSetupForm, radiusMeters: e.target.value })}
-                      required
-                    />
+                  {/* Stepper Radius Input - Matching Template */}
+                  <div className="template-input-group">
+                    <label className="template-input-label">
+                      <span>Perimeter Radius (Meters)</span>
+                    </label>
+                    <div className="template-input-box">
+                      <span className="template-input-icon"><Crosshair size={16} /></span>
+                      <input
+                        type="number"
+                        placeholder="200"
+                        className="template-input-control"
+                        value={siteSetupForm.radiusMeters}
+                        onChange={(e) => setSiteSetupForm({ ...siteSetupForm, radiusMeters: Number(e.target.value) || 0 })}
+                        required
+                      />
+                      <div className="template-stepper-controls">
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => setSiteSetupForm(prev => ({
+                            ...prev,
+                            radiusMeters: Math.max(50, (Number(prev.radiusMeters) || 200) - 50)
+                          }))}
+                          title="Decrease radius by 50m"
+                        >
+                          −
+                        </button>
+                        <div className="stepper-divider" />
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          onClick={() => setSiteSetupForm(prev => ({
+                            ...prev,
+                            radiusMeters: Math.min(2000, (Number(prev.radiusMeters) || 200) + 50)
+                          }))}
+                          title="Increase radius by 50m"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="template-helper-text">Allowed geofence perimeter distance from center (default 200m).</div>
                   </div>
 
-                  <Button
+                  {/* Address Input - Template Styled */}
+                  <div className="template-input-group">
+                    <label className="template-input-label">
+                      <span>Site Address / Landmark</span>
+                    </label>
+                    <div className="template-input-box">
+                      <span className="template-input-icon"><Building2 size={16} /></span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Whitefield Main Road, Bangalore"
+                        className="template-input-control"
+                        value={siteSetupForm.address}
+                        onChange={(e) => setSiteSetupForm({ ...siteSetupForm, address: e.target.value })}
+                      />
+                    </div>
+                    <div className="template-helper-text">Helpful location reference for site audit logs.</div>
+                  </div>
+
+                  <button
                     type="submit"
-                    variant="primary"
                     disabled={isSettingSiteCoords}
-                    style={{ width: '100%', padding: '10px', marginTop: '4px' }}
+                    style={{
+                      height: '48px',
+                      backgroundColor: '#2563EB',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '14px',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      cursor: isSettingSiteCoords ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                      marginTop: '6px',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
-                    {isSettingSiteCoords ? 'Saving Site Coordinates...' : 'Save Coordinates'}
-                  </Button>
+                    {isSettingSiteCoords ? 'Saving Site Coordinates...' : 'Save Site Coordinates'}
+                  </button>
                 </form>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModalDismissed(true);
-                    setIsManualOpen(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748B',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    marginTop: '6px',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  Dismiss for now (shown as not filled at top of page)
-                </button>
+                <div style={{ textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalDismissed(true);
+                      setIsManualOpen(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748B',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    Dismiss for now (shown as not filled at top of page)
+                  </button>
+                </div>
               </div>
             ) : (
-              /* CASE 3: SCHEDULED / ON-DEMAND LOCATION CHECK-IN */
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+              /* CASE 3: SCHEDULED / ON-DEMAND LOCATION DECLARATION (TEMPLATE STYLE) */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Header: Centered with Generous Spacing */}
                 <div style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
-                  boxShadow: '0 8px 20px rgba(37, 99, 235, 0.35)',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFF',
-                  margin: '0 auto'
+                  textAlign: 'center',
+                  paddingTop: '8px',
+                  paddingBottom: '12px',
+                  gap: '12px',
+                  width: '100%',
                 }}>
-                  <MapPin size={34} />
-                </div>
+                  {/* Centered Icon Container */}
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '18px',
+                    backgroundColor: '#EFF6FF',
+                    border: '1.5px solid #DBEAFE',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#2563EB',
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.12)',
+                  }}>
+                    <MapPin size={28} />
+                  </div>
 
-                <div>
+                  {/* Centered Single-Line Badge */}
                   <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '6px',
-                    padding: '4px 12px',
+                    padding: '5px 16px',
                     borderRadius: '9999px',
                     backgroundColor: '#FEF3C7',
                     border: '1px solid #FCD34D',
@@ -770,172 +953,137 @@ export default function SupervisorLocationBanner() {
                     fontSize: '11px',
                     fontWeight: 700,
                     textTransform: 'uppercase',
-                    marginBottom: '8px'
+                    letterSpacing: '0.04em',
+                    whiteSpace: 'nowrap',
+                    lineHeight: '1.2',
                   }}>
                     <Clock size={12} />
-                    <span>{pendingState.slotLabel || 'Site Supervisor Location Declaration'}</span>
+                    <span>{pendingState.slotLabel || 'Site Location Check-in'}</span>
                   </div>
 
-                  <h2 style={{ fontSize: '21px', fontWeight: 800, color: '#0F172A', margin: 0, letterSpacing: '-0.3px' }}>
-                    {pendingState.pending ? 'Supervisor Location Required' : 'Declare Site Location'}
-                  </h2>
-
-                  <p style={{ fontSize: '13px', color: '#64748B', marginTop: '8px', lineHeight: '1.5' }}>
-                    Submit your real-time GPS location to verify physical presence at your active project site.
-                  </p>
+                  {/* Centered Title & Subtitle */}
+                  <div style={{ textAlign: 'center' }}>
+                    <h2 style={{
+                      fontSize: '20px',
+                      fontWeight: 800,
+                      color: '#0F172A',
+                      margin: '0 0 6px 0',
+                      letterSpacing: '-0.3px',
+                      lineHeight: '1.25',
+                    }}>
+                      {pendingState.pending ? 'Location Check-in Required' : 'Declare Site Location'}
+                    </h2>
+                    <p style={{
+                      fontSize: '13px',
+                      color: '#64748B',
+                      margin: 0,
+                      lineHeight: '1.45',
+                      maxWidth: '380px',
+                    }}>
+                      Submit your real-time GPS coordinates to verify physical attendance.
+                    </p>
+                  </div>
                 </div>
 
-                {/* ── PARALLEL ACTIVE SITES SELECTOR (IF MULTIPLE ACTIVE PROJECTS ASSIGNED) ── */}
-                {pendingState.availableProjects && pendingState.availableProjects.length > 1 && (
+                {/* 1. Project Site Selector Field - Template Style */}
+                <div className="template-input-group">
+                  <label className="template-input-label">
+                    <span>Active Project Site</span>
+                  </label>
+                  <div className="template-input-box">
+                    <span className="template-input-icon"><Building2 size={16} /></span>
+                    {pendingState.availableProjects && pendingState.availableProjects.length > 1 ? (
+                      <select
+                        className="template-input-control"
+                        value={pendingState.project?._id || ''}
+                        onChange={(e) => checkPendingLocation(e.target.value)}
+                        style={{ cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        {pendingState.availableProjects.map((p) => (
+                          <option key={p._id} value={p._id}>
+                            {p.code ? `[${p.code}] ` : ''}{p.name} {p.pending ? '— Check-in Due' : '— ✓ Recorded'}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="template-input-control" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontWeight: 600 }}>{pendingState.project?.name || 'Active Project Site'}</span>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: '#EFF6FF',
+                          color: '#1D4ED8',
+                          padding: '2px 8px',
+                          borderRadius: '6px'
+                        }}>
+                          {pendingState.project?.code || 'SITE'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="template-helper-text">
+                    {pendingState.availableProjects && pendingState.availableProjects.length > 1
+                      ? 'In another project site today? Switch project to declare presence there.'
+                      : 'Physical presence will be verified against this site\'s geofence center.'}
+                  </div>
+                </div>
+
+                {/* 2. Co-Supervisor Status Card - Template Helper Box Style */}
+                {pendingState.coveredByCoSupervisor ? (
                   <div style={{
-                    width: '100%',
-                    backgroundColor: '#F1F5F9',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '12px',
-                    padding: '12px',
-                    textAlign: 'left'
+                    backgroundColor: '#F0FDF4',
+                    border: '1.5px solid #A7F3D0',
+                    borderRadius: '14px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        In Another Site? Switch Project:
-                      </span>
-                      <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 600 }}>
-                        {pendingState.availableProjects.length} Assigned Sites
-                      </span>
+                    <CheckCircle2 size={18} color="#059669" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '12px', color: '#065F46' }}>
+                      <strong style={{ display: 'block', fontWeight: 700 }}>Site Presence Covered</strong>
+                      <span>Co-supervisor <strong>{pendingState.coveredByCoSupervisor}</strong> verified on-site presence.</span>
                     </div>
-
-                    <select
-                      className="form-control"
-                      value={pendingState.project?._id || ''}
-                      onChange={(e) => checkPendingLocation(e.target.value)}
-                      style={{
-                        width: '100%',
-                        fontSize: '13px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        border: '1px solid #CBD5E1',
-                        backgroundColor: '#FFFFFF',
-                        marginBottom: '8px',
-                        fontWeight: 600
-                      }}
-                    >
-                      {pendingState.availableProjects.map((p) => (
-                        <option key={p._id} value={p._id}>
-                          {p.code ? `[${p.code}] ` : ''}{p.name} {p.pending ? '— Check-in Due' : '— ✓ Recorded'}
-                        </option>
-                      ))}
-                    </select>
-
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {pendingState.availableProjects.map((p) => {
-                        const isSelected = pendingState.project?._id === p._id;
-                        return (
-                          <button
-                            key={p._id}
-                            type="button"
-                            onClick={() => checkPendingLocation(p._id)}
-                            style={{
-                              padding: '5px 10px',
-                              borderRadius: '20px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              border: isSelected ? '2px solid #2563EB' : '1px solid #CBD5E1',
-                              backgroundColor: isSelected ? '#EFF6FF' : '#FFFFFF',
-                              color: isSelected ? '#1D4ED8' : '#334155',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                              boxShadow: isSelected ? '0 1px 4px rgba(37,99,235,0.15)' : 'none',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <Building2 size={12} color={isSelected ? '#2563EB' : '#64748B'} />
-                            <span>{p.code ? `[${p.code}] ` : ''}{p.name}</span>
-                            {p.pending ? (
-                              <span style={{
-                                backgroundColor: '#FEE2E2',
-                                color: '#DC2626',
-                                fontSize: '9px',
-                                padding: '1px 5px',
-                                borderRadius: '10px'
-                              }}>
-                                Due
-                              </span>
-                            ) : (
-                              <span style={{
-                                backgroundColor: '#ECFDF5',
-                                color: '#059669',
-                                fontSize: '9px',
-                                padding: '1px 5px',
-                                borderRadius: '10px'
-                              }}>
-                                ✓
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                  </div>
+                ) : pendingState.markedOnAnotherSite ? (
+                  <div style={{
+                    backgroundColor: '#EFF6FF',
+                    border: '1.5px solid #BFDBFE',
+                    borderRadius: '14px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <Building2 size={18} color="#2563EB" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '12px', color: '#1E40AF' }}>
+                      <strong style={{ display: 'block', fontWeight: 700 }}>Declared on Another Site</strong>
+                      <span>You recorded check-in at <strong>{pendingState.markedOnAnotherSite.projectName}</strong> ({pendingState.markedOnAnotherSite.projectCode}).</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    backgroundColor: '#FFFBEB',
+                    border: '1.5px solid #FDE68A',
+                    borderRadius: '14px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <AlertTriangle size={18} color="#D97706" style={{ flexShrink: 0 }} />
+                    <div style={{ fontSize: '12px', color: '#92400E' }}>
+                      <strong style={{ display: 'block', fontWeight: 700 }}>At Least One Supervisor Required</strong>
+                      <span>On-site presence has not been verified yet. Please submit your GPS attendance.</span>
                     </div>
                   </div>
                 )}
 
-                {/* Currently Selected Project Badge */}
-                <div style={{
-                  width: '100%',
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  textAlign: 'left'
-                }}>
-                  <div>
-                    <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#64748B', fontWeight: 600 }}>
-                      Selected Site
-                    </div>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#1E293B', marginTop: '2px' }}>
-                      {pendingState.project?.name || 'Active Project Site'}
-                    </div>
-                  </div>
-                  <div style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    backgroundColor: '#EFF6FF',
-                    color: '#1D4ED8',
-                    padding: '4px 10px',
-                    borderRadius: '4px'
-                  }}>
-                    {pendingState.project?.code || 'SITE'}
-                  </div>
-                </div>
-
-                {/* 4-Checkpoint Daily Compliance Schedule */}
-                <div style={{
-                  width: '100%',
-                  backgroundColor: '#FFFFFF',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  textAlign: 'left',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '10px'
-                  }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Daily Checkpoint Schedule
-                    </span>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748B' }}>
-                      4 Mandatory Intervals
-                    </span>
-                  </div>
-
+                {/* 3. Checkpoints Schedule - Template Input List Style */}
+                <div className="template-input-group">
+                  <label className="template-input-label">
+                    <span>Daily Checkpoints (4 Intervals)</span>
+                  </label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {DAILY_CHECKPOINTS.map((item) => {
                       const slotInfo = getSlotState(item.slot);
@@ -945,56 +1093,32 @@ export default function SupervisorLocationBanner() {
                       let badgeColor = '#64748B';
                       let badgeBg = '#F1F5F9';
                       let icon = <Clock size={15} color="#94A3B8" />;
-                      let borderStyle = '1px solid #E2E8F0';
-                      let bgStyle = '#F8FAFC';
-                      let cursorStyle = 'default';
+                      let cardClass = 'template-slot-card';
 
                       if (slotInfo.status === 'completed') {
                         badgeColor = '#047857';
                         badgeBg = '#ECFDF5';
-                        borderStyle = '1px solid #BBF7D0';
-                        bgStyle = '#F0FDF4';
+                        cardClass += ' completed';
                         icon = <CheckCircle2 size={15} color="#059669" />;
                       } else if (slotInfo.status === 'missed') {
                         badgeColor = '#B91C1C';
                         badgeBg = '#FEE2E2';
-                        borderStyle = '1px solid #FECACA';
-                        bgStyle = '#FFF5F5';
-                        cursorStyle = 'not-allowed';
+                        cardClass += ' missed';
                         icon = <XCircle size={15} color="#DC2626" />;
                       } else if (slotInfo.status === 'ready' || isCurrentActive) {
                         badgeColor = '#1D4ED8';
                         badgeBg = '#EFF6FF';
-                        borderStyle = '2px solid #3B82F6';
-                        bgStyle = '#F0F9FF';
-                        cursorStyle = 'pointer';
+                        cardClass += ' active';
                         icon = <Navigation size={15} color="#2563EB" />;
-                      } else {
-                        cursorStyle = 'not-allowed';
                       }
 
                       return (
-                        <div
-                          key={item.slot}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            borderRadius: '8px',
-                            backgroundColor: bgStyle,
-                            border: borderStyle,
-                            boxShadow: (slotInfo.status === 'ready' || isCurrentActive) ? '0 0 0 3px rgba(59, 130, 246, 0.15)' : 'none',
-                            cursor: cursorStyle,
-                            transition: 'all 0.15s ease',
-                            opacity: slotInfo.status === 'missed' ? 0.9 : 1
-                          }}
-                        >
+                        <div key={item.slot} className={cardClass}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             {icon}
                             <div>
                               <div style={{ fontSize: '13px', fontWeight: (slotInfo.status === 'ready' || isCurrentActive) ? 700 : 600, color: '#1E293B' }}>
-                                {item.label} <span style={{ fontWeight: 400, color: '#64748B', fontSize: '12px' }}>— {item.name}</span>
+                                {item.label} <span style={{ fontWeight: 400, color: '#64748B', fontSize: '12px' }}>• {item.name}</span>
                               </div>
                               <div style={{
                                 fontSize: '11px',
@@ -1008,8 +1132,8 @@ export default function SupervisorLocationBanner() {
 
                           <span style={{
                             padding: '3px 8px',
-                            borderRadius: '4px',
-                            fontSize: '11px',
+                            borderRadius: '9999px',
+                            fontSize: '10px',
                             fontWeight: 700,
                             textTransform: 'uppercase',
                             letterSpacing: '0.03em',
@@ -1024,65 +1148,44 @@ export default function SupervisorLocationBanner() {
                       );
                     })}
                   </div>
-
-                  {pendingState.missedSlots?.length > 0 && (() => {
-                    const currentKey = getCurrentSlotKey();
-                    const currentSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentKey);
-                    const missedLabels = pendingState.missedSlots
-                      .map(s => DAILY_CHECKPOINTS.find(c => c.slot === s)?.label || s)
-                      .join(', ');
-                    return (
-                      <div style={{
-                        marginTop: '10px',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#FEF2F2',
-                        border: '1px solid #FCA5A5',
-                        fontSize: '11px',
-                        color: '#991B1B',
-                        lineHeight: '1.4'
-                      }}>
-                        ⚠️ <strong>Notice:</strong> Past checkpoint(s) [{missedLabels}] cannot be back-submitted. Only the current <strong>{currentSlotObj?.label || currentKey}</strong> check-in window can be submitted.
-                      </div>
-                    );
-                  })()}
+                  <div className="template-helper-text">
+                    Check-in window is open for the current checkpoint interval. Expired checkpoints cannot be back-submitted.
+                  </div>
                 </div>
 
-                {/* Error Message */}
+                {/* Error Box */}
                 {error && (
-                  <div style={{
-                    width: '100%',
+                  <div className="template-helper-text error" style={{
                     backgroundColor: '#FEF2F2',
-                    border: '1px solid #FCA5A5',
-                    color: '#991B1B',
-                    padding: '10px 14px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    textAlign: 'left'
+                    border: '1.5px solid #FECACA',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px'
                   }}>
                     ⚠️ {error}
                   </div>
                 )}
 
-                {/* Live GPS Lock Status */}
+                {/* Live GPS Lock Indicator */}
                 {gpsStatus && (
                   <div style={{
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
                     fontSize: '12px',
                     color: '#2563EB',
                     fontWeight: 600,
                     backgroundColor: '#EFF6FF',
-                    padding: '6px 14px',
-                    borderRadius: '9999px'
+                    border: '1px solid #BFDBFE',
+                    padding: '8px 14px',
+                    borderRadius: '12px'
                   }}>
                     <RefreshCw size={13} className="spin-icon" />
                     <span>{gpsStatus}</span>
                   </div>
                 )}
 
-                {/* Transmit CTA Button */}
+                {/* CTA Transmit Button */}
                 {(() => {
                   const currentActiveKey = getCurrentSlotKey();
                   const activeState = getSlotState(currentActiveKey);
@@ -1091,43 +1194,98 @@ export default function SupervisorLocationBanner() {
                   const activeSlotObj = DAILY_CHECKPOINTS.find(c => c.slot === currentActiveKey);
 
                   return (
-                    <div style={{ width: '100%', marginTop: '4px' }}>
-                      <Button
+                    <div style={{ width: '100%', marginTop: '2px' }}>
+                      <button
                         type="button"
-                        variant={isCompleted ? 'secondary' : 'primary'}
-                        icon={isCompleted ? CheckCircle2 : Navigation}
                         onClick={handleTransmitCoordinates}
                         disabled={isTransmitting || isCompleted || isMissed}
                         style={{
                           width: '100%',
-                          padding: '12px 20px',
+                          height: '48px',
                           fontSize: '14px',
                           fontWeight: 700,
                           backgroundColor: isCompleted ? '#F1F5F9' : '#2563EB',
-                          borderColor: isCompleted ? '#E2E8F0' : '#1D4ED8',
+                          border: `1.5px solid ${isCompleted ? '#CBD5E1' : '#1D4ED8'}`,
                           color: isCompleted ? '#475569' : '#FFFFFF',
-                          boxShadow: isCompleted ? 'none' : '0 4px 14px rgba(37, 99, 235, 0.4)',
+                          borderRadius: '14px',
+                          boxShadow: isCompleted ? 'none' : '0 4px 14px rgba(37, 99, 235, 0.35)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '8px'
+                          gap: '8px',
+                          cursor: (isTransmitting || isCompleted || isMissed) ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        {isTransmitting
-                          ? 'Acquiring GPS Signal...'
-                          : isCompleted
-                          ? `✓ ${activeSlotObj?.label} Check-in Already Completed`
-                          : isMissed
-                          ? 'Check-in Windows Closed for Today'
-                          : `Transmit GPS for ${pendingState.project?.name || 'Site'}`}
-                      </Button>
+                        {isTransmitting ? (
+                          <>
+                            <RefreshCw size={15} className="spin-icon" />
+                            <span>Acquiring Device GPS...</span>
+                          </>
+                        ) : isCompleted ? (
+                          <>
+                            <CheckCircle2 size={16} color="#059669" />
+                            <span>✓ {activeSlotObj?.label} Check-in Completed</span>
+                          </>
+                        ) : isMissed ? (
+                          <span>Check-in Window Closed for Today</span>
+                        ) : (
+                          <>
+                            <Navigation size={16} />
+                            <span>Transmit GPS for {pendingState.project?.name || 'Site'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Skip: does NOT register anything - supervisor stays pending until GPS is submitted */}
+                      {!isCompleted && !isMissed && (
+                        <button
+                          type="button"
+                          onClick={handleDeclareAnotherSite}
+                          disabled={isTransmitting || isSubmittingAnotherSite}
+                          style={{
+                            width: '100%',
+                            marginTop: '8px',
+                            height: '42px',
+                            border: '1.5px solid #CBD5E1',
+                            borderRadius: '12px',
+                            backgroundColor: '#F8FAFC',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            color: '#334155',
+                            cursor: (isTransmitting || isSubmittingAnotherSite) ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <Building2 size={15} color="#64748B" />
+                          <span>{isSubmittingAnotherSite ? 'Checking...' : 'Working on Another Site / Skip'}</span>
+                        </button>
+                      )}
 
                       {error && (
                         <button
                           type="button"
                           onClick={handleTransmitCoordinates}
-                          className="btn btn-outline btn-sm"
-                          style={{ width: '100%', marginTop: '8px', fontSize: '12px' }}
+                          style={{
+                            width: '100%',
+                            marginTop: '8px',
+                            height: '36px',
+                            border: '1.5px solid #CBD5E1',
+                            borderRadius: '10px',
+                            backgroundColor: '#FFFFFF',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#1E293B',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
                         >
                           <RefreshCw size={12} /> Try Again
                         </button>
@@ -1136,24 +1294,25 @@ export default function SupervisorLocationBanner() {
                   );
                 })()}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModalDismissed(true);
-                    setIsManualOpen(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748B',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    marginTop: '4px',
-                    textDecoration: 'underline'
-                  }}
-                >
-                  Dismiss for now (shown as not filled at top of page)
-                </button>
+                <div style={{ textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalDismissed(true);
+                      setIsManualOpen(false);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#64748B',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    Dismiss for now (shown as not filled at top of page)
+                  </button>
+                </div>
               </div>
             )}
           </div>

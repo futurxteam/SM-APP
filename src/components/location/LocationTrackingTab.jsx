@@ -285,8 +285,15 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
 
         <div className="responsive-checkpoint-grid">
           {slotsList.map(({ key, label, timeLabel, color }) => {
+            const slotDetail = (data?.checkpointDetails && data.checkpointDetails[key]) || {};
             const log = checkpoints[key];
-            const isRecorded = !!log;
+            const entries = slotDetail.entries || [];
+            const hasEntries = entries.length > 0;
+            const hasAtLeastOneOnSite = slotDetail.hasAtLeastOneOnSite || (log && log.status === 'on_site');
+            const bothOnSite = slotDetail.bothOnSite;
+            const missedByBoth = slotDetail.missedByBoth;
+            const anotherSiteCount = slotDetail.anotherSiteCount || 0;
+            const isRecorded = hasAtLeastOneOnSite || entries.some(e => e.status !== 'not_submitted') || !!log;
 
             const isSlotMissed = () => {
               const isSelectedDateToday = selectedDate === dayjs().format('YYYY-MM-DD');
@@ -299,7 +306,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
               return hour >= (cutoffs[key] || 24);
             };
 
-            const missed = !isRecorded && isSlotMissed();
+            const missed = !hasAtLeastOneOnSite && isSlotMissed();
 
             return (
               <Card
@@ -316,8 +323,8 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                     <span style={{ fontWeight: 700, fontSize: '15px', color }}>{label}</span>
-                    {isRecorded ? (
-                      log.status === 'on_site' ? (
+                    {hasAtLeastOneOnSite ? (
+                      bothOnSite ? (
                         <span style={{
                           backgroundColor: '#ECFDF5',
                           color: '#059669',
@@ -327,46 +334,49 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           borderRadius: '4px',
                           whiteSpace: 'nowrap',
                         }}>
-                          🟢 ON SITE
+                          🟢 BOTH ON SITE
                         </span>
-                      ) : log.status === 'near_site' ? (
+                      ) : (
                         <span style={{
-                          backgroundColor: '#FFFBEB',
-                          color: '#D97706',
+                          backgroundColor: '#ECFDF5',
+                          color: '#059669',
                           fontSize: '11px',
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: '4px',
                           whiteSpace: 'nowrap',
                         }}>
-                          🟡 NEAR SITE
+                          🟢 ON SITE COVERED
+                        </span>
+                      )
+                    ) : missed ? (
+                      anotherSiteCount > 0 ? (
+                        <span style={{
+                          backgroundColor: '#FFFBEB',
+                          color: '#D97706',
+                          border: '1px solid #FDE68A',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          ⚠️ ANOTHER SITE DECLARED
                         </span>
                       ) : (
                         <span style={{
                           backgroundColor: '#FEF2F2',
                           color: '#DC2626',
+                          border: '1px solid #FECACA',
                           fontSize: '11px',
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: '4px',
                           whiteSpace: 'nowrap',
                         }}>
-                          🔴 OFF SITE
+                          {missedByBoth ? '❌ MISSED BY BOTH' : '❌ NOT SUBMITTED'}
                         </span>
                       )
-                    ) : missed ? (
-                      <span style={{
-                        backgroundColor: '#FEF2F2',
-                        color: '#DC2626',
-                        border: '1px solid #FECACA',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        ❌ NOT SUBMITTED
-                      </span>
                     ) : (
                       <span style={{
                         backgroundColor: '#EFF6FF',
@@ -387,9 +397,161 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                     Target Window: {timeLabel}
                   </div>
 
-                  {missed && (
+                  {/* Multi-Supervisor Breakdown */}
+                  {/* Multi-Supervisor Breakdown: Admin only sees each interval and which supervisor marked for it and his location */}
+                  {(() => {
+                    const markedEntries = (entries || []).filter(e => e.status !== 'not_submitted');
+
+                    if (markedEntries.length > 0) {
+                      return (
+                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {markedEntries.map((entry, idx) => {
+                            const isSupOnSite = entry.status === 'on_site';
+                            const isAnotherSite = entry.status === 'another_site';
+                            const isNearSite = entry.status === 'near_site';
+                            const isOffSite = entry.status === 'off_site';
+
+                            return (
+                              <div
+                                key={entry.supervisor?._id || idx}
+                                style={{
+                                  padding: '10px 12px',
+                                  borderRadius: '10px',
+                                  border: isSupOnSite
+                                    ? '1.5px solid #BBF7D0'
+                                    : isAnotherSite
+                                    ? '1.5px solid #BFDBFE'
+                                    : isNearSite
+                                    ? '1.5px solid #FDE68A'
+                                    : '1.5px solid #FECACA',
+                                  backgroundColor: isSupOnSite
+                                    ? '#F0FDF4'
+                                    : isAnotherSite
+                                    ? '#EFF6FF'
+                                    : isNearSite
+                                    ? '#FFFBEB'
+                                    : '#FEF2F2',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{
+                                      width: '22px',
+                                      height: '22px',
+                                      borderRadius: '50%',
+                                      backgroundColor: isSupOnSite ? '#10B981' : isAnotherSite ? '#2563EB' : '#D97706',
+                                      color: '#FFFFFF',
+                                      fontSize: '10px',
+                                      fontWeight: 700,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      {entry.supervisor?.name?.charAt(0) || 'S'}
+                                    </div>
+                                    <strong style={{ fontSize: '13px', color: '#1E293B' }}>{entry.supervisor?.name}</strong>
+                                  </div>
+
+                                  {isSupOnSite && (
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#059669', backgroundColor: '#DCFCE7', padding: '2px 8px', borderRadius: '4px' }}>
+                                      🟢 ON SITE
+                                    </span>
+                                  )}
+                                  {isAnotherSite && (
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#1D4ED8', backgroundColor: '#DBEAFE', padding: '2px 8px', borderRadius: '4px' }}>
+                                      🏢 ANOTHER SITE
+                                    </span>
+                                  )}
+                                  {isNearSite && (
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#D97706', backgroundColor: '#FEF3C7', padding: '2px 8px', borderRadius: '4px' }}>
+                                      🟡 NEAR SITE
+                                    </span>
+                                  )}
+                                  {isOffSite && (
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#DC2626', backgroundColor: '#FEE2E2', padding: '2px 8px', borderRadius: '4px' }}>
+                                      🔴 OFF SITE
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ fontSize: '11px', marginTop: '6px', color: '#475569' }}>
+                                  {isAnotherSite ? (
+                                    <div style={{ color: '#1E40AF', fontWeight: 600 }}>
+                                      Another site: <strong>{entry.siteName}</strong> {entry.siteCode ? `[${entry.siteCode}]` : ''} {entry.timeRecorded ? `(${dayjs(entry.timeRecorded).format('hh:mm A')})` : ''}
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                                      <span>{entry.deviationFormatted} {entry.timeRecorded ? `(${dayjs(entry.timeRecorded).format('hh:mm A')})` : ''}</span>
+                                      {entry.latitude && (
+                                        <a
+                                          href={`https://www.google.com/maps?q=${entry.latitude},${entry.longitude}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{ color: 'var(--color-brand)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                        >
+                                          <ExternalLink size={11} /> Map
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    if (isRecorded) {
+                      return (
+                        <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            backgroundColor: log.status === 'on_site' ? '#F0FDF4' : '#FEF2F2',
+                            border: `1.5px solid ${log.status === 'on_site' ? '#BBF7D0' : '#FECACA'}`,
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: log.status === 'on_site' ? '#15803D' : '#B91C1C' }}>
+                              {log.supervisor?.name || 'Supervisor'}: {log.deviationFormatted}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Logged: {dayjs(log.timeRecorded).format('hh:mm A')}</span>
+                              {log.latitude && (
+                                <a
+                                  href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{ color: 'var(--color-brand)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}
+                                >
+                                  <ExternalLink size={11} /> Map
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div style={{
+                        marginTop: '10px',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        backgroundColor: missed ? '#FEF2F2' : '#F8FAFC',
+                        border: `1px dashed ${missed ? '#FECACA' : '#CBD5E1'}`,
+                        fontSize: '11px',
+                        color: missed ? '#DC2626' : '#64748B',
+                        textAlign: 'center',
+                      }}>
+                        {missed ? '❌ No check-in recorded for this interval' : '⏱️ Waiting for check-in submission'}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Summary Alert when missed */}
+                  {missed && !hasAtLeastOneOnSite && (
                     <div style={{
-                      marginTop: '10px',
+                      marginTop: '8px',
                       padding: '8px 10px',
                       borderRadius: '6px',
                       backgroundColor: '#FEF2F2',
@@ -397,82 +559,16 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                       color: '#991B1B',
                       fontSize: '11px',
                     }}>
-                      <strong>Not Submitted:</strong> Supervisor did not record coordinates within the {timeLabel} window. Expired and cannot be back-submitted.
-                    </div>
-                  )}
-
-                  {isRecorded ? (
-                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {/* Deviation Box */}
-                      <div style={{
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        backgroundColor: log.status === 'on_site' ? '#F0FDF4' : log.status === 'near_site' ? '#FFFBEB' : '#FEF2F2',
-                        border: `1px solid ${log.status === 'on_site' ? '#BBF7D0' : log.status === 'near_site' ? '#FDE68A' : '#FECACA'}`,
-                      }}>
-                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase' }}>
-                          Deviation Report:
-                        </div>
-                        <div style={{
-                          fontSize: '14px',
-                          fontWeight: 700,
-                          color: log.status === 'on_site' ? '#15803D' : log.status === 'near_site' ? '#B45309' : '#B91C1C',
-                          marginTop: '2px',
-                        }}>
-                          {log.deviationFormatted}
-                        </div>
-                      </div>
-
-                      <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div>
-                          <strong>Recorded:</strong> {dayjs(log.timeRecorded).format('hh:mm A')}
-                        </div>
-                        <div>
-                          <strong>Coordinates:</strong> {log.latitude.toFixed(5)}, {log.longitude.toFixed(5)}
-                        </div>
-                        <div>
-                          <strong>Distance:</strong> {log.distanceFromSiteMeters != null ? `${log.distanceFromSiteMeters}m from site center` : 'N/A'}
-                        </div>
-                        {log.accuracy && (
-                          <div className="text-muted">
-                            GPS Accuracy: ±{Math.round(log.accuracy)}m
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{
-                      marginTop: '16px',
-                      padding: '14px',
-                      textAlign: 'center',
-                      backgroundColor: '#F8FAFC',
-                      borderRadius: '6px',
-                      border: '1px dashed var(--color-border)',
-                      color: 'var(--color-text-muted)',
-                      fontSize: '13px',
-                    }}>
-                      Check-in not yet recorded for this slot
+                      {missedByBoth ? (
+                        <span><strong>Missed by both supervisors:</strong> Physical presence on site was not submitted in the {timeLabel} window.</span>
+                      ) : anotherSiteCount > 0 ? (
+                        <span><strong>No supervisor on site:</strong> Marked on another site, but no supervisor verified physical presence on this site.</span>
+                      ) : (
+                        <span><strong>Not Submitted:</strong> Checkpoint not recorded within {timeLabel} window.</span>
+                      )}
                     </div>
                   )}
                 </div>
-
-                {isRecorded && (
-                  <a
-                    href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--color-brand)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    <ExternalLink size={12} /> Open in Google Maps
-                  </a>
-                )}
               </Card>
             );
           })}
