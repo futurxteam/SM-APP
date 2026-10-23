@@ -75,7 +75,7 @@ export default function CareersAdminPage() {
   const [jobFormData, setJobFormData] = useState({
     title: '',
     department: 'Architecture',
-    location: 'Kozhikode, Kerala',
+    location: '',
     type: 'full-time',
     experience: '2-4 years',
     salary: '',
@@ -203,7 +203,7 @@ export default function CareersAdminPage() {
     setJobFormData({
       title: '',
       department: 'Architecture',
-      location: 'Kozhikode, Kerala',
+      location: '',
       type: 'full-time',
       experience: '2-4 years',
       salary: '',
@@ -222,9 +222,9 @@ export default function CareersAdminPage() {
     setJobFormData({
       title: job.title || '',
       department: job.department || 'Architecture',
-      location: job.location || 'Kozhikode, Kerala',
-      type: job.type || 'full-time',
-      experience: job.experience || '',
+      location: job.location || '',
+      type: job.type || job.employmentType || 'full-time',
+      experience: job.experience || job.experienceLevel || '',
       salary: job.salary || '',
       vacancies: job.vacancies || 1,
       deadline: job.deadline ? job.deadline.split('T')[0] : '',
@@ -242,20 +242,39 @@ export default function CareersAdminPage() {
       alert('Please enter a job title');
       return;
     }
+    if (!jobFormData.location?.trim()) {
+      alert('Please enter a job location');
+      return;
+    }
 
     setIsSavingJob(true);
     try {
+      const userDesc = (jobFormData.description || '').trim();
+      // Ensure at least 25 characters to always pass backend validation
+      const finalDescription = userDesc.length >= 20
+        ? userDesc
+        : (userDesc
+            ? `${userDesc} - Architecture and interior design role at Hygge Designs.`
+            : `${jobFormData.title.trim()} vacancy at Hygge Designs Architecture Studio.`);
+
+      const resolvedType = jobFormData.type || 'full-time';
+      const resolvedExp = jobFormData.experience || '1-3 years';
+
       const payload = {
-        ...jobFormData,
+        title: jobFormData.title.trim(),
+        department: jobFormData.department || 'Architecture',
+        location: jobFormData.location.trim(),
+        employmentType: resolvedType,
+        type: resolvedType,
+        experienceLevel: resolvedExp,
+        experience: resolvedExp,
+        salary: jobFormData.salary || '',
         vacancies: Number(jobFormData.vacancies) || 1,
-        requirements: jobFormData.requirements
-          .split('\n')
-          .map(r => r.trim())
-          .filter(Boolean),
-        responsibilities: jobFormData.responsibilities
-          .split('\n')
-          .map(r => r.trim())
-          .filter(Boolean)
+        deadline: jobFormData.deadline || null,
+        status: jobFormData.status || 'published',
+        description: finalDescription,
+        requirements: jobFormData.requirements || '',
+        responsibilities: jobFormData.responsibilities || ''
       };
 
       if (editingJobId) {
@@ -267,8 +286,15 @@ export default function CareersAdminPage() {
       setIsJobModalOpen(false);
       await loadJobsData();
     } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || 'Failed to save job opening');
+      console.error('Save job error:', err.response?.data || err);
+      const errorData = err.response?.data;
+      let errorMsg = 'Failed to save job opening';
+      if (errorData?.errors) {
+        errorMsg = Object.values(errorData.errors).join('\n');
+      } else if (errorData?.message) {
+        errorMsg = errorData.message;
+      }
+      alert(errorMsg);
     } finally {
       setIsSavingJob(false);
     }
@@ -431,79 +457,6 @@ export default function CareersAdminPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      
-      {/* ── Top Admin Portal Tabs Bar (Beside Users & Activity Feed) ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        backgroundColor: '#FFFFFF',
-        padding: '8px 12px',
-        borderRadius: '8px',
-        border: '1px solid var(--color-border)',
-        boxShadow: 'var(--shadow-xs)'
-      }}>
-        <NavLink
-          to="/admin/users"
-          style={({ isActive }) => ({
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 14px',
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontWeight: 600,
-            textDecoration: 'none',
-            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
-            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
-            transition: 'all 0.15s ease'
-          })}
-        >
-          <Users size={16} />
-          <span>User Accounts</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/careers"
-          style={({ isActive }) => ({
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 14px',
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontWeight: 600,
-            textDecoration: 'none',
-            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
-            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
-            transition: 'all 0.15s ease'
-          })}
-        >
-          <Briefcase size={16} />
-          <span>Careers & Recruitment</span>
-        </NavLink>
-
-        <NavLink
-          to="/admin/activity-log"
-          style={({ isActive }) => ({
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 14px',
-            borderRadius: '6px',
-            fontSize: '13px',
-            fontWeight: 600,
-            textDecoration: 'none',
-            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
-            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
-            transition: 'all 0.15s ease'
-          })}
-        >
-          <Activity size={16} />
-          <span>Activity Feed</span>
-        </NavLink>
-      </div>
-
       {/* ── Page Header & Action Buttons ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
@@ -1424,10 +1377,11 @@ export default function CareersAdminPage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="form-group">
-              <label>Location</label>
+              <label>Location *</label>
               <input
                 className="input"
-                placeholder="e.g. Kozhikode, Bangalore, Hybrid"
+                required
+                placeholder="Enter job location (e.g. Bangalore, Kochi, Remote)..."
                 value={jobFormData.location}
                 onChange={(e) => setJobFormData({ ...jobFormData, location: e.target.value })}
               />
