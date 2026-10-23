@@ -859,3 +859,118 @@ tr:hover td {
   }
 }
 
+/* ── RESPONSIVE TRANSACTION CARDS & DETAIL MODAL ── */
+.mobile-transaction-list {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.desktop-transaction-table {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .desktop-transaction-table {
+    display: none !important;
+  }
+  .table-scroll-hint {
+    display: none !important;
+  }
+  .mobile-transaction-list {
+    display: flex !important;
+  }
+}
+
+.mobile-transaction-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.mobile-transaction-card:active {
+  transform: scale(0.98);
+  background-color: #F8FAFC;
+}
+
+/* ── GENERIC RESPONSIVE TABLE VS MOBILE CARD SYSTEM ── */
+.desktop-only-table {
+  display: block;
+}
+
+.mobile-only-card-list {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 768px) {
+  .desktop-only-table {
+    display: none !important;
+  }
+  .mobile-only-card-list {
+    display: flex !important;
+  }
+}
+
+.mobile-data-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
+}
+
+.mobile-data-card:active {
+  background-color: #F8FAFC;
+}
+
+/* Pagination Bar */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 0;
+  margin-top: 10px;
+  border-top: 1px solid #E2E8F0;
+  font-size: 12px;
+  color: #64748B;
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+  background-color: #FFFFFF;
+  color: #1E293B;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background-color: #F8FAFC;
+}
+
+.pagination-btn:not(:disabled):hover {
+  background-color: #EFF6FF;
+  border-color: #93C5FD;
+  color: #1D4ED8;
+}
+
+

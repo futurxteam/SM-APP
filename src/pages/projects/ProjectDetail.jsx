@@ -68,8 +68,11 @@ export default function ProjectDetail() {
 
   const [pettyCash, setPettyCash] = useState(null);
   const [ledgerTransactions, setLedgerTransactions] = useState([]);
+  const [selectedTransactionDetail, setSelectedTransactionDetail] = useState(null);
   const [ledgerFilter, setLedgerFilter] = useState('all');
   const [ledgerDate, setLedgerDate] = useState('');
+  const [ledgerPage, setLedgerPage] = useState(1);
+  const [ledgerPagination, setLedgerPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1, hasMore: false });
   const [isPettyCashLoading, setIsPettyCashLoading] = useState(false);
   const [refillRequests, setRefillRequests] = useState([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -96,6 +99,9 @@ export default function ProjectDetail() {
   const [openingBalanceForm, setOpeningBalanceForm] = useState('');
   const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
   const [isSettingOpeningBalance, setIsSettingOpeningBalance] = useState(false);
+  const [isDirectRefillModalOpen, setIsDirectRefillModalOpen] = useState(false);
+  const [isSubmittingDirectRefill, setIsSubmittingDirectRefill] = useState(false);
+  const [directRefillForm, setDirectRefillForm] = useState({ amount: '', reason: '' });
 
   const [materials, setMaterials] = useState(null);
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
@@ -370,7 +376,7 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (activeTab === 'pettycash') loadPettyCash();
-  }, [ledgerFilter, ledgerDate]);
+  }, [ledgerFilter, ledgerDate, ledgerPage]);
 
   // Live master worker search with debounce
   useEffect(() => {
@@ -609,11 +615,15 @@ export default function ProjectDetail() {
   const loadPettyCash = async () => {
     setIsPettyCashLoading(true);
     try {
-      const params = ledgerDate ? `date=${encodeURIComponent(ledgerDate)}` : `range=${ledgerFilter}`;
+      const baseParams = ledgerDate ? `date=${encodeURIComponent(ledgerDate)}` : `range=${ledgerFilter}`;
+      const params = `${baseParams}&page=${ledgerPage}&limit=30`;
       const res = await api.get(`/projects/${projectId}/pettycash?${params}`);
       setPettyCash(res.data.data.pettyCash);
       setLedgerTransactions(res.data.data.filteredTransactions || []);
       setRefillRequests(res.data.data.refillRequests);
+      if (res.data.data.pagination) {
+        setLedgerPagination(res.data.data.pagination);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -633,6 +643,26 @@ export default function ProjectDetail() {
       alert(err.response?.data?.message || 'Failed to set opening balance');
     } finally {
       setIsSettingOpeningBalance(false);
+    }
+  };
+
+  const handleDirectRefill = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmittingDirectRefill) return;
+    if (!directRefillForm.amount || Number(directRefillForm.amount) <= 0) {
+      alert('Please enter a valid refill amount.');
+      return;
+    }
+    try {
+      setIsSubmittingDirectRefill(true);
+      await api.post(`/projects/${projectId}/pettycash/refill`, directRefillForm);
+      setIsDirectRefillModalOpen(false);
+      setDirectRefillForm({ amount: '', reason: '' });
+      loadPettyCash();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to refill petty cash');
+    } finally {
+      setIsSubmittingDirectRefill(false);
     }
   };
 
@@ -1589,53 +1619,193 @@ export default function ProjectDetail() {
                 </div>
 
                 {/* Attendance Table */}
-                <div className="table-scroll-hint"> Swipe horizontally to view all attendance fields </div>
                 {isAttendanceLoading ? (
                   <LoadingSpinner text="Fetching attendance entries..." style={{ padding: '30px' }} />
                 ) : (
-                  <div className="table-container">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Worker Details</th>
-                          <th>Daily Rate</th>
-                          <th>Time In</th>
-                          <th>Time Out</th>
-                          <th>Duty Type</th>
-                          <th>Amount Paid Today (₹)</th>
-                          <th>Remarks</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {attendanceData.entries.length === 0 ? (
-                          <tr>
-                            <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#94A3B8' }}>
-                              <Users size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
-                              <p>No workers added to attendance for this date yet.</p>
-                              <p className="text-muted text-xs" style={{ marginTop: '4px' }}>Use the search bar above to search and add workers.</p>
-                            </td>
-                          </tr>
-                        ) : (
-                          attendanceData.entries.map((entry, idx) => {
-                            const worker = entry.worker || {};
-                            return (
-                              <tr key={idx}>
-                                <td>
-                                  <div>
-                                    <strong>{worker.name || 'Worker'}</strong>
-                                    <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-                                      {worker.skill || 'General'} {worker.phone ? `• ${worker.phone}` : ''}
-                                    </div>
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="desktop-only-table">
+                      <div className="table-scroll-hint"> Swipe horizontally to view all attendance fields </div>
+                      <div className="table-container">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Worker Details</th>
+                              <th>Daily Rate</th>
+                              <th>Time In</th>
+                              <th>Time Out</th>
+                              <th>Duty Type</th>
+                              <th>Amount Paid Today (₹)</th>
+                              <th>Remarks</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attendanceData.entries.length === 0 ? (
+                              <tr>
+                                <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#94A3B8' }}>
+                                  <Users size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
+                                  <p>No workers added to attendance for this date yet.</p>
+                                  <p className="text-muted text-xs" style={{ marginTop: '4px' }}>Use the search bar above to search and add workers.</p>
+                                </td>
+                              </tr>
+                            ) : (
+                              attendanceData.entries.map((entry, idx) => {
+                                const worker = entry.worker || {};
+                                return (
+                                  <tr key={idx}>
+                                    <td>
+                                      <div>
+                                        <strong>{worker.name || 'Worker'}</strong>
+                                        <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                                          {worker.skill || 'General'} {worker.phone ? `• ${worker.phone}` : ''}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      <span style={{ fontWeight: 600 }}>₹{worker.dailyRate || 0}</span>
+                                    </td>
+                                    <td>
+                                      <input
+                                        className="input"
+                                        style={{ width: '90px', padding: '6px' }}
+                                        value={entry.timeIn || '09:00'}
+                                        onChange={(e) => {
+                                          const newEntries = [...attendanceData.entries];
+                                          newEntries[idx].timeIn = e.target.value;
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <input
+                                        className="input"
+                                        style={{ width: '90px', padding: '6px' }}
+                                        value={entry.timeOut || '18:00'}
+                                        onChange={(e) => {
+                                          const newEntries = [...attendanceData.entries];
+                                          newEntries[idx].timeOut = e.target.value;
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <select
+                                        className="input"
+                                        style={{ width: '120px', padding: '6px' }}
+                                        value={entry.dutyType || 'full_day'}
+                                        onChange={(e) => {
+                                          const newEntries = [...attendanceData.entries];
+                                          newEntries[idx].dutyType = e.target.value;
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      >
+                                        <option value="full_day">Full Day (1.0x)</option>
+                                        <option value="half_day">Half Day (0.5x)</option>
+                                        <option value="overtime">Overtime (1.5x)</option>
+                                        <option value="custom_hours">Custom Hours</option>
+                                      </select>
+                                    </td>
+                                    <td>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        className="input"
+                                        style={{ width: '110px', padding: '6px', fontWeight: 600, color: '#059669' }}
+                                        value={entry.amountPaid ?? ''}
+                                        placeholder="0"
+                                        onChange={(e) => {
+                                          const newEntries = [...attendanceData.entries];
+                                          newEntries[idx].amountPaid = e.target.value;
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <input
+                                        className="input"
+                                        style={{ minWidth: '130px', padding: '6px' }}
+                                        value={entry.remarks || ''}
+                                        placeholder="e.g. Electrical work"
+                                        onChange={(e) => {
+                                          const newEntries = [...attendanceData.entries];
+                                          newEntries[idx].remarks = e.target.value;
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      />
+                                    </td>
+                                    <td>
+                                      <button
+                                        className="btn btn-sm btn-danger"
+                                        onClick={() => {
+                                          const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
+                                          setAttendanceData({ ...attendanceData, entries: newEntries });
+                                        }}
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Mobile Card List (No Horizontal Scroll) */}
+                    <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
+                      {attendanceData.entries.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '36px 16px', color: '#94A3B8' }}>
+                          <Users size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
+                          <p>No workers added to attendance for this date yet.</p>
+                          <p className="text-muted text-xs" style={{ marginTop: '4px' }}>Use the search bar above to search and add workers.</p>
+                        </div>
+                      ) : (
+                        attendanceData.entries.map((entry, idx) => {
+                          const worker = entry.worker || {};
+                          return (
+                            <div key={idx} className="mobile-data-card" style={{ padding: '14px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: '15px', color: '#1E293B' }}>{worker.name || 'Worker'}</div>
+                                  <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>
+                                    {worker.skill || 'General'} {worker.phone ? `• ${worker.phone}` : ''}
                                   </div>
-                                </td>
-                                <td>
-                                  <span style={{ fontWeight: 600 }}>₹{worker.dailyRate || 0}</span>
-                                </td>
-                                <td>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', fontWeight: 700, fontSize: '12px' }}>
+                                    ₹{worker.dailyRate || 0}/day
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
+                                      setAttendanceData({ ...attendanceData, entries: newEntries });
+                                    }}
+                                    style={{
+                                      background: '#FEE2E2',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      color: '#DC2626',
+                                      fontWeight: 700,
+                                      padding: '4px 8px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px'
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                                <div>
+                                  <label style={{ fontSize: '11px', color: '#64748B', display: 'block', marginBottom: '3px' }}>Time In</label>
                                   <input
                                     className="input"
-                                    style={{ width: '90px', padding: '6px' }}
+                                    style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.timeIn || '09:00'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
@@ -1643,11 +1813,12 @@ export default function ProjectDetail() {
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
                                     }}
                                   />
-                                </td>
-                                <td>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '11px', color: '#64748B', display: 'block', marginBottom: '3px' }}>Time Out</label>
                                   <input
                                     className="input"
-                                    style={{ width: '90px', padding: '6px' }}
+                                    style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.timeOut || '18:00'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
@@ -1655,11 +1826,15 @@ export default function ProjectDetail() {
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
                                     }}
                                   />
-                                </td>
-                                <td>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                                <div>
+                                  <label style={{ fontSize: '11px', color: '#64748B', display: 'block', marginBottom: '3px' }}>Duty Type</label>
                                   <select
                                     className="input"
-                                    style={{ width: '120px', padding: '6px' }}
+                                    style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.dutyType || 'full_day'}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
@@ -1672,13 +1847,14 @@ export default function ProjectDetail() {
                                     <option value="overtime">Overtime (1.5x)</option>
                                     <option value="custom_hours">Custom Hours</option>
                                   </select>
-                                </td>
-                                <td>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '11px', color: '#64748B', display: 'block', marginBottom: '3px' }}>Paid Today (₹)</label>
                                   <input
                                     type="number"
                                     min="0"
                                     className="input"
-                                    style={{ width: '110px', padding: '6px', fontWeight: 600, color: '#059669' }}
+                                    style={{ width: '100%', padding: '6px 8px', fontSize: '12px', fontWeight: 700, color: '#059669' }}
                                     value={entry.amountPaid ?? ''}
                                     placeholder="0"
                                     onChange={(e) => {
@@ -1687,38 +1863,29 @@ export default function ProjectDetail() {
                                       setAttendanceData({ ...attendanceData, entries: newEntries });
                                     }}
                                   />
-                                </td>
-                                <td>
-                                  <input
-                                    className="input"
-                                    style={{ minWidth: '130px', padding: '6px' }}
-                                    value={entry.remarks || ''}
-                                    placeholder="e.g. Electrical work"
-                                    onChange={(e) => {
-                                      const newEntries = [...attendanceData.entries];
-                                      newEntries[idx].remarks = e.target.value;
-                                      setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <button
-                                    className="btn btn-sm btn-danger"
-                                    onClick={() => {
-                                      const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
-                                      setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }}
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label style={{ fontSize: '11px', color: '#64748B', display: 'block', marginBottom: '3px' }}>Remarks</label>
+                                <input
+                                  className="input"
+                                  style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
+                                  value={entry.remarks || ''}
+                                  placeholder="e.g. Electrical work, site painting..."
+                                  onChange={(e) => {
+                                    const newEntries = [...attendanceData.entries];
+                                    newEntries[idx].remarks = e.target.value;
+                                    setAttendanceData({ ...attendanceData, entries: newEntries });
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
                 )}
               </Card>
             </div>
@@ -1810,98 +1977,204 @@ export default function ProjectDetail() {
                   <Badge variant="active">{paymentSummaryDate === 'all' ? 'All Dates' : dayjs(paymentSummaryDate).format('DD MMM YYYY')}</Badge>
                 </div>
 
-                <div className="table-scroll-hint"> Swipe horizontally to view all payment columns </div>
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Worker Name</th>
-                        <th>Skill & Type</th>
-                        <th>Daily Rate</th>
-                        <th>Days Worked</th>
-                        <th>Total Earned (₹)</th>
-                        <th>Amount Paid (₹)</th>
-                        <th>Pending Balance (₹)</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {labourSummary.length === 0 ? (
+                {/* Desktop Table View */}
+                <div className="desktop-only-table">
+                  <div className="table-scroll-hint"> Swipe horizontally to view all payment columns </div>
+                  <div className="table-container">
+                    <table>
+                      <thead>
                         <tr>
-                          <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#94A3B8' }}>
-                            <IndianRupee size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
-                            <p>No labour payment or attendance records found for this date.</p>
-                          </td>
+                          <th>Worker Name</th>
+                          <th>Skill & Type</th>
+                          <th>Daily Rate</th>
+                          <th>Days Worked</th>
+                          <th>Total Earned (₹)</th>
+                          <th>Amount Paid (₹)</th>
+                          <th>Pending Balance (₹)</th>
+                          <th>Status</th>
                         </tr>
-                      ) : (
-                        <>
-                          {labourSummary.map((item) => {
-                            const isPaidFull = item.pendingAmount <= 0;
-                            const isPartial = item.totalPaid > 0 && item.pendingAmount > 0;
-                            return (
-                              <tr key={item.workerId || item._id}>
-                                <td>
-                                  <strong>{item.name}</strong>
-                                  {item.phone && <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{item.phone}</div>}
-                                </td>
-                                <td>
-                                  <div>{item.skill || 'General'}</div>
-                                  <span className="text-muted text-xs">{item.workerType?.replace('_', ' ') || 'daily wage'}</span>
-                                </td>
-                                <td>₹{item.dailyRate || 0}</td>
-                                <td>{item.daysWorked} days</td>
-                                <td style={{ fontWeight: 600 }}>₹{item.totalEarned?.toLocaleString('en-IN')}</td>
-                                <td style={{ fontWeight: 600, color: '#059669' }}>₹{item.totalPaid?.toLocaleString('en-IN')}</td>
-                                <td style={{ fontWeight: 700, color: item.pendingAmount > 0 ? '#DC2626' : '#059669' }}>
-                                  ₹{item.pendingAmount?.toLocaleString('en-IN')}
-                                </td>
-                                <td>
-                                  {isPaidFull ? (
-                                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', padding: '3px 8px', borderRadius: '4px' }}>
-                                      Paid
-                                    </span>
-                                  ) : isPartial ? (
-                                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#D97706', backgroundColor: '#FFFBEB', padding: '3px 8px', borderRadius: '4px' }}>
-                                      Partial
-                                    </span>
-                                  ) : (
-                                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#DC2626', backgroundColor: '#FEF2F2', padding: '3px 8px', borderRadius: '4px' }}>
-                                      Pending
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-
-                          {/* TOTAL OF ALL FOOTER ROW */}
-                          <tr style={{
-                            backgroundColor: '#F1F5F9',
-                            borderTop: '2px solid var(--color-border)',
-                            borderBottom: '2px solid var(--color-border)',
-                            fontWeight: 700
-                          }}>
-                            <td colSpan="3" style={{ fontSize: '14px', fontWeight: 700 }}>
-                              TOTAL OF ALL ({labourSummaryTotals?.totalWorkers || labourSummary.length} Workers)
+                      </thead>
+                      <tbody>
+                        {labourSummary.length === 0 ? (
+                          <tr>
+                            <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#94A3B8' }}>
+                              <IndianRupee size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
+                              <p>No labour payment or attendance records found for this date.</p>
                             </td>
-                            <td style={{ fontWeight: 700 }}>
-                              {labourSummaryTotals?.totalDaysWorked ?? labourSummary.reduce((acc, curr) => acc + (curr.daysWorked || 0), 0)} days
-                            </td>
-                            <td style={{ fontWeight: 700, color: 'var(--color-brand)', fontSize: '15px' }}>
-                              ₹{(labourSummaryTotals?.totalEarned ?? labourSummary.reduce((acc, curr) => acc + (curr.totalEarned || 0), 0)).toLocaleString('en-IN')}
-                            </td>
-                            <td style={{ fontWeight: 700, color: '#059669', fontSize: '15px' }}>
-                              ₹{(labourSummaryTotals?.totalPaid ?? labourSummary.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0)).toLocaleString('en-IN')}
-                            </td>
-                            <td style={{ fontWeight: 700, color: (labourSummaryTotals?.totalPending ?? 0) > 0 ? '#DC2626' : '#059669', fontSize: '15px' }}>
-                              ₹{(labourSummaryTotals?.totalPending ?? labourSummary.reduce((acc, curr) => acc + (curr.pendingAmount || 0), 0)).toLocaleString('en-IN')}
-                            </td>
-                            <td>—</td>
                           </tr>
-                        </>
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          <>
+                            {labourSummary.map((item) => {
+                              const isPaidFull = item.pendingAmount <= 0;
+                              const isPartial = item.totalPaid > 0 && item.pendingAmount > 0;
+                              return (
+                                <tr key={item.workerId || item._id}>
+                                  <td>
+                                    <strong>{item.name}</strong>
+                                    {item.phone && <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{item.phone}</div>}
+                                  </td>
+                                  <td>
+                                    <div>{item.skill || 'General'}</div>
+                                    <span className="text-muted text-xs">{item.workerType?.replace('_', ' ') || 'daily wage'}</span>
+                                  </td>
+                                  <td>₹{item.dailyRate || 0}</td>
+                                  <td>{item.daysWorked} days</td>
+                                  <td style={{ fontWeight: 600 }}>₹{item.totalEarned?.toLocaleString('en-IN')}</td>
+                                  <td style={{ fontWeight: 600, color: '#059669' }}>₹{item.totalPaid?.toLocaleString('en-IN')}</td>
+                                  <td style={{ fontWeight: 700, color: item.pendingAmount > 0 ? '#DC2626' : '#059669' }}>
+                                    ₹{item.pendingAmount?.toLocaleString('en-IN')}
+                                  </td>
+                                  <td>
+                                    {isPaidFull ? (
+                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', padding: '3px 8px', borderRadius: '4px' }}>
+                                        Paid
+                                      </span>
+                                    ) : isPartial ? (
+                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#D97706', backgroundColor: '#FFFBEB', padding: '3px 8px', borderRadius: '4px' }}>
+                                        Partial
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#DC2626', backgroundColor: '#FEF2F2', padding: '3px 8px', borderRadius: '4px' }}>
+                                        Pending
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* TOTAL OF ALL FOOTER ROW */}
+                            <tr style={{
+                              backgroundColor: '#F1F5F9',
+                              borderTop: '2px solid var(--color-border)',
+                              borderBottom: '2px solid var(--color-border)',
+                              fontWeight: 700
+                            }}>
+                              <td colSpan="3" style={{ fontSize: '14px', fontWeight: 700 }}>
+                                TOTAL OF ALL ({labourSummaryTotals?.totalWorkers || labourSummary.length} Workers)
+                              </td>
+                              <td style={{ fontWeight: 700 }}>
+                                {labourSummaryTotals?.totalDaysWorked ?? labourSummary.reduce((acc, curr) => acc + (curr.daysWorked || 0), 0)} days
+                              </td>
+                              <td style={{ fontWeight: 700, color: 'var(--color-brand)', fontSize: '15px' }}>
+                                ₹{(labourSummaryTotals?.totalEarned ?? labourSummary.reduce((acc, curr) => acc + (curr.totalEarned || 0), 0)).toLocaleString('en-IN')}
+                              </td>
+                              <td style={{ fontWeight: 700, color: '#059669', fontSize: '15px' }}>
+                                ₹{(labourSummaryTotals?.totalPaid ?? labourSummary.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0)).toLocaleString('en-IN')}
+                              </td>
+                              <td style={{ fontWeight: 700, color: (labourSummaryTotals?.totalPending ?? 0) > 0 ? '#DC2626' : '#059669', fontSize: '15px' }}>
+                                ₹{(labourSummaryTotals?.totalPending ?? labourSummary.reduce((acc, curr) => acc + (curr.pendingAmount || 0), 0)).toLocaleString('en-IN')}
+                              </td>
+                              <td>—</td>
+                            </tr>
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mobile Card List (No Horizontal Scroll) */}
+                <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
+                  {labourSummary.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '36px 16px', color: '#94A3B8' }}>
+                      <IndianRupee size={32} style={{ marginBottom: '8px', color: '#CBD5E1' }} />
+                      <p>No labour payment or attendance records found for this date.</p>
+                    </div>
+                  ) : (
+                    <>
+                      {labourSummary.map((item) => {
+                        const isPaidFull = item.pendingAmount <= 0;
+                        const isPartial = item.totalPaid > 0 && item.pendingAmount > 0;
+                        return (
+                          <div key={item.workerId || item._id} className="mobile-data-card" style={{ padding: '14px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: '15px', color: '#1E293B' }}>{item.name}</div>
+                                <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>
+                                  {item.skill || 'General'} • {item.workerType?.replace('_', ' ') || 'daily wage'}
+                                </div>
+                              </div>
+                              {isPaidFull ? (
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', padding: '3px 8px', borderRadius: '4px' }}>
+                                  Paid
+                                </span>
+                              ) : isPartial ? (
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#D97706', backgroundColor: '#FFFBEB', padding: '3px 8px', borderRadius: '4px' }}>
+                                  Partial
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '11px', fontWeight: 600, color: '#DC2626', backgroundColor: '#FEF2F2', padding: '3px 8px', borderRadius: '4px' }}>
+                                  Pending
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', backgroundColor: '#F8FAFC', padding: '8px 10px', borderRadius: '8px', margin: '8px 0', fontSize: '12px' }}>
+                              <div>
+                                <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Daily Rate</span>
+                                <strong style={{ color: '#1E293B' }}>₹{item.dailyRate || 0}</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Worked</span>
+                                <strong style={{ color: '#1E293B' }}>{item.daysWorked} days</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Total Earned</span>
+                                <strong style={{ color: 'var(--color-brand)' }}>₹{item.totalEarned?.toLocaleString('en-IN')}</strong>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px solid #F1F5F9' }}>
+                              <div>
+                                <span style={{ fontSize: '11px', color: '#64748B' }}>Paid: </span>
+                                <strong style={{ fontSize: '13px', color: '#059669' }}>₹{item.totalPaid?.toLocaleString('en-IN')}</strong>
+                              </div>
+                              <div>
+                                <span style={{ fontSize: '11px', color: '#64748B' }}>Pending: </span>
+                                <strong style={{ fontSize: '14px', color: item.pendingAmount > 0 ? '#DC2626' : '#059669' }}>
+                                  ₹{item.pendingAmount?.toLocaleString('en-IN')}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Total Mobile Summary Card */}
+                      <div style={{
+                        backgroundColor: '#F1F5F9',
+                        borderRadius: '12px',
+                        padding: '14px',
+                        border: '1px solid #E2E8F0',
+                        marginTop: '8px'
+                      }}>
+                        <div style={{ fontWeight: 700, fontSize: '13px', color: '#1E293B', marginBottom: '8px' }}>
+                          TOTAL SUMMARY ({labourSummaryTotals?.totalWorkers || labourSummary.length} Workers)
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>Earned</div>
+                            <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--color-brand)' }}>
+                              ₹{(labourSummaryTotals?.totalEarned ?? labourSummary.reduce((acc, curr) => acc + (curr.totalEarned || 0), 0)).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>Paid</div>
+                            <div style={{ fontWeight: 700, fontSize: '14px', color: '#059669' }}>
+                              ₹{(labourSummaryTotals?.totalPaid ?? labourSummary.reduce((acc, curr) => acc + (curr.totalPaid || 0), 0)).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>Pending</div>
+                            <div style={{ fontWeight: 700, fontSize: '14px', color: (labourSummaryTotals?.totalPending ?? 0) > 0 ? '#DC2626' : '#059669' }}>
+                              ₹{(labourSummaryTotals?.totalPending ?? labourSummary.reduce((acc, curr) => acc + (curr.pendingAmount || 0), 0)).toLocaleString('en-IN')}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </Card>
             </div>
@@ -1985,99 +2258,186 @@ export default function ProjectDetail() {
               )}
             </div>
 
-            <div className="table-scroll-hint"> Swipe horizontally to view all purchase records </div>
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type / Category</th>
-                    <th>Material Item / Description</th>
-                    <th>Quantity & Rate</th>
-                    <th>Total Amount (₹)</th>
-                    <th>Invoice Proof</th>
-                    <th>Recorded By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchases.length === 0 ? (
-                    <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No direct purchases recorded.</td></tr>
-                  ) : (
-                    purchases.map(p => {
-                      const isMat = p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName;
-                      return (
-                        <tr key={p._id}>
-                          <td>{dayjs(p.date).format('DD-MM-YYYY')}</td>
-                          <td>
-                            <span
-                              className="badge"
-                              style={{
-                                backgroundColor: isMat ? '#EEF2FF' : '#F1F5F9',
-                                color: isMat ? '#4338CA' : '#334155',
-                                border: isMat ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
-                                fontWeight: 600,
-                                fontSize: '11px'
-                              }}
-                            >
-                              {p.category || (isMat ? 'Material' : 'Purchase')}
-                            </span>
-                          </td>
-                          <td>
-                            {p.materialName ? (
-                              <div>
-                                <strong style={{ color: '#1E293B' }}>{p.materialName}</strong>
-                                {p.description && <div style={{ fontSize: '12px', color: '#64748B' }}>{p.description}</div>}
-                              </div>
-                            ) : (
-                              <span>{p.description || '—'}</span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '13px', color: '#475569' }}>
-                            {p.materialQuantity ? (
-                              <span>
-                                <strong>{p.materialQuantity} {p.materialUnit || 'Units'}</strong>
-                                {p.materialUnitCost && <span style={{ color: '#64748B', fontSize: '11px' }}> (@ ₹{p.materialUnitCost})</span>}
-                              </span>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td style={{ fontWeight: 700, color: '#0F172A', fontSize: '14px' }}>
-                            ₹{Number(p.amount).toLocaleString('en-IN')}
-                          </td>
-                          <td>
-                            {p.invoiceImage ? (
-                              <a
-                                href={p.invoiceImage}
-                                target="_blank"
-                                rel="noreferrer"
+            {/* Desktop Table View */}
+            <div className="desktop-only-table">
+              <div className="table-scroll-hint"> Swipe horizontally to view all purchase records </div>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type / Category</th>
+                      <th>Material Item / Description</th>
+                      <th>Quantity & Rate</th>
+                      <th>Total Amount (₹)</th>
+                      <th>Invoice Proof</th>
+                      <th>Recorded By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchases.length === 0 ? (
+                      <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No direct purchases recorded.</td></tr>
+                    ) : (
+                      purchases.map(p => {
+                        const isMat = p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName;
+                        return (
+                          <tr key={p._id}>
+                            <td>{dayjs(p.date).format('DD-MM-YYYY')}</td>
+                            <td>
+                              <span
+                                className="badge"
                                 style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  color: 'var(--color-brand)',
+                                  backgroundColor: isMat ? '#EEF2FF' : '#F1F5F9',
+                                  color: isMat ? '#4338CA' : '#334155',
+                                  border: isMat ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
                                   fontWeight: 600,
-                                  fontSize: '12px'
+                                  fontSize: '11px'
                                 }}
                               >
-                                <FileText size={13} /> View Invoice
-                              </a>
-                            ) : (
-                              <span style={{ color: '#94A3B8', fontSize: '12px' }}>No Proof</span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: '12px' }}>
-                            <div style={{ fontWeight: 600, color: '#1E293B' }}>{p.addedBy?.name || 'Accounts/Admin'}</div>
-                            <div style={{ fontSize: '11px', color: '#64748B' }}>
-                              {p.addedBy?.role ? `${p.addedBy.role.replace('_', ' ')} • ` : ''}{dayjs(p.createdAt || p.date).format('DD MMM YYYY, hh:mm A')}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                                {p.category || (isMat ? 'Material' : 'Purchase')}
+                              </span>
+                            </td>
+                            <td>
+                              {p.materialName ? (
+                                <div>
+                                  <strong style={{ color: '#1E293B' }}>{p.materialName}</strong>
+                                  {p.description && <div style={{ fontSize: '12px', color: '#64748B' }}>{p.description}</div>}
+                                </div>
+                              ) : (
+                                <span>{p.description || '—'}</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: '13px', color: '#475569' }}>
+                              {p.materialQuantity ? (
+                                <span>
+                                  <strong>{p.materialQuantity} {p.materialUnit || 'Units'}</strong>
+                                  {p.materialUnitCost && <span style={{ color: '#64748B', fontSize: '11px' }}> (@ ₹{p.materialUnitCost})</span>}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td style={{ fontWeight: 700, color: '#0F172A', fontSize: '14px' }}>
+                              ₹{Number(p.amount).toLocaleString('en-IN')}
+                            </td>
+                            <td>
+                              {p.invoiceImage ? (
+                                <a
+                                  href={p.invoiceImage}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    color: 'var(--color-brand)',
+                                    fontWeight: 600,
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  <FileText size={13} /> View Invoice
+                                </a>
+                              ) : (
+                                <span style={{ color: '#94A3B8', fontSize: '12px' }}>No Proof</span>
+                              )}
+                            </td>
+                            <td style={{ fontSize: '12px' }}>
+                              <div style={{ fontWeight: 600, color: '#1E293B' }}>{p.addedBy?.name || 'Accounts/Admin'}</div>
+                              <div style={{ fontSize: '11px', color: '#64748B' }}>
+                                {p.addedBy?.role ? `${p.addedBy.role.replace('_', ' ')} • ` : ''}{dayjs(p.createdAt || p.date).format('DD MMM YYYY, hh:mm A')}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card List (No Horizontal Scroll) */}
+            <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
+              {purchases.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94A3B8', padding: '32px 16px', fontSize: '13px' }}>
+                  No direct purchases recorded.
+                </div>
+              ) : (
+                purchases.map(p => {
+                  const isMat = p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName;
+                  return (
+                    <div key={p._id} className="mobile-data-card" style={{ padding: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span
+                          className="badge"
+                          style={{
+                            backgroundColor: isMat ? '#EEF2FF' : '#F1F5F9',
+                            color: isMat ? '#4338CA' : '#334155',
+                            border: isMat ? '1px solid #C7D2FE' : '1px solid #E2E8F0',
+                            fontWeight: 700,
+                            fontSize: '11px'
+                          }}
+                        >
+                          {p.category || (isMat ? 'Material' : 'Purchase')}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#64748B' }}>
+                          {dayjs(p.date).format('DD-MM-YYYY')}
+                        </span>
+                      </div>
+
+                      <div style={{ marginBottom: '8px' }}>
+                        <strong style={{ fontSize: '15px', color: '#1E293B' }}>
+                          {p.materialName || p.description || 'Direct Purchase'}
+                        </strong>
+                        {p.materialName && p.description && (
+                          <div style={{ fontSize: '12px', color: '#64748B', marginTop: '2px' }}>{p.description}</div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: '#F8FAFC', borderRadius: '8px', margin: '8px 0' }}>
+                        <div>
+                          <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Quantity & Rate</span>
+                          <span style={{ fontSize: '13px', color: '#1E293B', fontWeight: 600 }}>
+                            {p.materialQuantity ? `${p.materialQuantity} ${p.materialUnit || 'Units'}` : '—'}
+                            {p.materialUnitCost && <span style={{ color: '#64748B', fontSize: '11px', fontWeight: 400 }}> (@ ₹{p.materialUnitCost})</span>}
+                          </span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Total Paid</span>
+                          <span style={{ fontSize: '16px', fontWeight: 800, color: '#0F172A' }}>
+                            ₹{Number(p.amount).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '6px', borderTop: '1px solid #F1F5F9' }}>
+                        <div style={{ fontSize: '11px', color: '#64748B' }}>
+                          By {p.addedBy?.name || 'Accounts/Admin'}
+                        </div>
+                        {p.invoiceImage ? (
+                          <a
+                            href={p.invoiceImage}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: 'var(--color-brand)',
+                              fontWeight: 600,
+                              fontSize: '12px'
+                            }}
+                          >
+                            <FileText size={13} /> View Invoice
+                          </a>
+                        ) : (
+                          <span style={{ color: '#94A3B8', fontSize: '11px' }}>No Proof</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </Card>
         </div>
@@ -2115,112 +2475,443 @@ export default function ProjectDetail() {
                   Export Excel
                 </button>
                 {(isSuperAdmin() || isAccounts()) && (
-                  <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
+                  !(pettyCash?.hasOpeningBalance || pettyCash?.transactions?.some(t => t.type === 'opening_balance') || ledgerTransactions?.some(t => t.type === 'opening_balance')) ? (
+                    <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
+                  ) : (
+                    <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Refill Petty Cash</Button>
+                  )
                 )}
                 <Button size="sm" icon={Plus} onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
-                <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); }}>
+                <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); setLedgerPage(1); }}>
                   <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
                 </select>
-                <input type="date" className="input" style={{ width: '145px', padding: '5px 8px' }} value={ledgerDate} onChange={(e) => setLedgerDate(e.target.value)} />
+                <input type="date" className="input" style={{ width: '145px', padding: '5px 8px' }} value={ledgerDate} onChange={(e) => { setLedgerDate(e.target.value); setLedgerPage(1); }} />
               </div>
             </div>
 
-            <div className="table-scroll-hint"> Swipe horizontally to view all transactions </div>
-            <div className="table-container">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Category</th>
-                    <th>Description</th>
-                    <th>Amount (₹)</th>
-                    <th>Receipt</th>
-                    <th>Recorded By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledgerTransactions.length === 0 ? (
-                    <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8' }}>No transactions recorded.</td></tr>
-                  ) : (
-                    ledgerTransactions.map((t, idx) => (
-                      <tr key={idx}>
-                        <td>
-                          <div>{dayjs(t.date).format('DD-MM-YYYY')}</div>
-                          <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(t.createdAt || t.date).format('hh:mm A')}</div>
-                        </td>
-                        <td>
+            {/* Desktop Table View */}
+            <div className="desktop-transaction-table">
+              <div className="table-scroll-hint"> Swipe horizontally to view all transactions </div>
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Category</th>
+                      <th>Description</th>
+                      <th>Amount (₹)</th>
+                      <th>Receipt</th>
+                      <th>Recorded By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerTransactions.length === 0 ? (
+                      <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8' }}>No transactions recorded.</td></tr>
+                    ) : (
+                      ledgerTransactions.map((t, idx) => (
+                        <tr key={idx}>
+                          <td>
+                            <div>{dayjs(t.date).format('DD-MM-YYYY')}</div>
+                            <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(t.createdAt || t.date).format('hh:mm A')}</div>
+                          </td>
+                          <td>
+                            <Badge variant={t.type === 'expense' ? 'rejected' : 'approved'}>
+                              {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
+                            </Badge>
+                          </td>
+                          <td>{t.category === 'custom' ? t.customCategoryName : (t.category || '—')}</td>
+                          <td>{t.description || '—'}</td>
+                          <td style={{ fontWeight: 600, color: t.type === 'expense' ? '#DC2626' : '#059669' }}>
+                            {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
+                          </td>
+                          <td>
+                            {t.receiptImage ? <a href={t.receiptImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)' }}>View Receipt</a> : '—'}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600, color: '#1E293B' }}>{t.addedBy?.name || 'System/Admin'}</div>
+                            {t.addedBy?.role && (
+                              <div style={{ fontSize: '11px', color: '#64748B' }}>{t.addedBy.role.replace('_', ' ')}</div>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card List View with Tap to Expand */}
+            <div className="mobile-transaction-list">
+              {ledgerTransactions.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#94A3B8', padding: '24px 0', fontSize: '13px' }}>
+                  No transactions recorded.
+                </div>
+              ) : (
+                ledgerTransactions.map((t, idx) => (
+                  <div
+                    key={idx}
+                    className="mobile-transaction-card"
+                    onClick={() => setSelectedTransactionDetail(t)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '14px', color: '#1E293B', textTransform: 'capitalize' }}>
+                          {t.category === 'custom' ? t.customCategoryName : (t.category || 'General')}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                          {dayjs(t.date).format('DD MMM YYYY')} • {dayjs(t.createdAt || t.date).format('hh:mm A')}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          fontWeight: 700,
+                          fontSize: '15px',
+                          color: t.type === 'expense' ? '#DC2626' : '#059669'
+                        }}>
+                          {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
+                        </div>
+                        <div style={{ marginTop: '3px' }}>
                           <Badge variant={t.type === 'expense' ? 'rejected' : 'approved'}>
                             {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
                           </Badge>
-                        </td>
-                        <td>{t.category === 'custom' ? t.customCategoryName : (t.category || '—')}</td>
-                        <td>{t.description || '—'}</td>
-                        <td style={{ fontWeight: 600, color: t.type === 'expense' ? '#DC2626' : '#059669' }}>
-                          {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
-                        </td>
-                        <td>
-                          {t.receiptImage ? <a href={t.receiptImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)' }}>View Receipt</a> : '—'}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, color: '#1E293B' }}>{t.addedBy?.name || 'System/Admin'}</div>
-                          {t.addedBy?.role && (
-                            <div style={{ fontSize: '11px', color: '#64748B' }}>{t.addedBy.role.replace('_', ' ')}</div>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {t.description && (
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#475569',
+                        marginTop: '4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {t.description}
+                      </div>
+                    )}
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '8px',
+                      paddingTop: '6px',
+                      borderTop: '1px dashed #E2E8F0',
+                      fontSize: '11px',
+                      color: '#64748B'
+                    }}>
+                      <span>By {t.addedBy?.name || 'System'}</span>
+                      <span style={{ color: '#2563EB', fontWeight: 600 }}>Tap for details →</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
+
+            {/* Mobile Transaction Detail Pop-up Modal */}
+            {selectedTransactionDetail && (
+              <div
+                className="modal-overlay"
+                onClick={() => setSelectedTransactionDetail(null)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                  backdropFilter: 'blur(6px)',
+                  zIndex: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: '24px',
+                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                    maxWidth: '420px',
+                    width: '100%',
+                    padding: '24px',
+                    position: 'relative',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    animation: 'scaleUpCard 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                >
+                  {/* Close button */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTransactionDetail(null)}
+                    style={{
+                      position: 'absolute',
+                      top: '16px',
+                      right: '16px',
+                      background: '#F1F5F9',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      color: '#64748B',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+
+                  {/* Header with Type Badge & Large Amount */}
+                  <div style={{ textAlign: 'center', marginTop: '8px', marginBottom: '20px' }}>
+                    <div style={{ marginBottom: '8px' }}>
+                      <Badge variant={selectedTransactionDetail.type === 'expense' ? 'rejected' : 'approved'}>
+                        {selectedTransactionDetail.type === 'expense' ? 'EXPENSE' : selectedTransactionDetail.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
+                      </Badge>
+                    </div>
+                    <div style={{
+                      fontSize: '32px',
+                      fontWeight: 800,
+                      letterSpacing: '-0.5px',
+                      color: selectedTransactionDetail.type === 'expense' ? '#DC2626' : '#059669',
+                    }}>
+                      {selectedTransactionDetail.type === 'expense'
+                        ? `−₹${selectedTransactionDetail.amount.toLocaleString('en-IN')}`
+                        : `+₹${selectedTransactionDetail.amount.toLocaleString('en-IN')}`}
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748B', marginTop: '4px', textTransform: 'capitalize' }}>
+                      {selectedTransactionDetail.category === 'custom'
+                        ? selectedTransactionDetail.customCategoryName
+                        : (selectedTransactionDetail.category || 'General')}
+                    </div>
+                  </div>
+
+                  {/* Details List */}
+                  <div style={{
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: '16px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    border: '1px solid #E2E8F0',
+                    fontSize: '13px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Date</span>
+                      <span style={{ fontWeight: 600, color: '#1E293B' }}>
+                        {dayjs(selectedTransactionDetail.date).format('DD MMM YYYY')}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Time</span>
+                      <span style={{ fontWeight: 600, color: '#1E293B' }}>
+                        {dayjs(selectedTransactionDetail.createdAt || selectedTransactionDetail.date).format('hh:mm A')}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#64748B' }}>Recorded By</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontWeight: 600, color: '#1E293B', display: 'block' }}>
+                          {selectedTransactionDetail.addedBy?.name || 'System/Admin'}
+                        </span>
+                        {selectedTransactionDetail.addedBy?.role && (
+                          <span style={{ fontSize: '11px', color: '#64748B' }}>
+                            {selectedTransactionDetail.addedBy.role.replace('_', ' ')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {selectedTransactionDetail.description && (
+                      <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '10px' }}>
+                        <span style={{ color: '#64748B', display: 'block', marginBottom: '4px', fontSize: '12px' }}>Description / Remarks</span>
+                        <span style={{ color: '#1E293B', fontWeight: 500, lineHeight: 1.4, display: 'block' }}>
+                          {selectedTransactionDetail.description}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Receipt Image / Invoice Preview */}
+                  {selectedTransactionDetail.receiptImage && (
+                    <div style={{ marginTop: '16px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
+                        Receipt Attachment
+                      </div>
+                      <a
+                        href={selectedTransactionDetail.receiptImage}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          display: 'block',
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          border: '1px solid #CBD5E1',
+                          backgroundColor: '#F1F5F9',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <img
+                          src={selectedTransactionDetail.receiptImage}
+                          alt="Receipt"
+                          style={{
+                            width: '100%',
+                            maxHeight: '180px',
+                            objectFit: 'contain',
+                            display: 'block',
+                          }}
+                        />
+                        <div style={{ padding: '6px', fontSize: '11px', color: '#2563EB', fontWeight: 600, backgroundColor: '#EFF6FF' }}>
+                          Tap to view full image ↗
+                        </div>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Done button */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTransactionDetail(null)}
+                    className="btn btn-secondary"
+                    style={{
+                      width: '100%',
+                      marginTop: '20px',
+                      height: '42px',
+                      borderRadius: '12px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Pagination Controls for Petty Cash Ledger (Max 30 items per page) */}
+            {ledgerPagination.totalPages > 1 && (
+              <div className="pagination-bar" style={{ marginTop: '16px' }}>
+                <span className="pagination-info">
+                  Page <strong>{ledgerPagination.page}</strong> of <strong>{ledgerPagination.totalPages}</strong> ({ledgerPagination.total} transactions)
+                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={ledgerPage <= 1}
+                    onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                  >
+                    ← Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="pagination-btn"
+                    disabled={!ledgerPagination.hasMore}
+                    onClick={() => setLedgerPage(p => p + 1)}
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* Cash Refill Requests List */}
           <Card>
             <h3>Cash Refill Requests</h3>
-            <div className="table-scroll-hint" style={{ marginTop: '10px' }}> Swipe horizontally to view refill requests </div>
-            <div className="table-container" style={{ marginTop: '4px' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Requested By</th>
-                    <th>Amount Requested (₹)</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {refillRequests.length === 0 ? (
-                    <tr><td colSpan="6" style={{ textAlign: 'center', color: '#94A3B8' }}>No refill requests.</td></tr>
-                  ) : (
-                    refillRequests.map(r => (
-                      <tr key={r._id}>
-                        <td>{dayjs(r.createdAt).format('DD-MM-YYYY HH:mm')}</td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{r.requestedBy?.name || 'Supervisor'}</div>
-                          {r.requestedBy?.role && <div style={{ fontSize: '11px', color: '#64748B' }}>{r.requestedBy.role.replace('_', ' ')}</div>}
-                          {r.approvedBy && (
-                            <div style={{ fontSize: '11px', color: '#059669', marginTop: '2px' }}>
-                              ✓ Approved by {r.approvedBy.name} {r.approvedAt ? `(${dayjs(r.approvedAt).format('DD-MM HH:mm')})` : ''}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ fontWeight: 600 }}>₹{r.requestedAmount.toLocaleString('en-IN')}</td>
-                        <td>{r.reason || '—'}</td>
-                        <td><Badge variant={r.status}>{r.status}</Badge></td>
-                        <td>
-                          {r.status === 'pending' && (isSuperAdmin() || isAccounts()) ? (
-                            <Button size="sm" onClick={() => handleApproveRefill(r._id)} isLoading={approvingRefillId === r._id} loadingText="Approving...">Approve Refill</Button>
-                          ) : '—'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+
+            {/* Desktop Table */}
+            <div className="desktop-only-table">
+              <div className="table-scroll-hint" style={{ marginTop: '10px' }}> Swipe horizontally to view refill requests </div>
+              <div className="table-container" style={{ marginTop: '4px' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Requested By</th>
+                      <th>Amount Requested (₹)</th>
+                      <th>Reason</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {refillRequests.length === 0 ? (
+                      <tr><td colSpan="6" style={{ textAlign: 'center', color: '#94A3B8' }}>No refill requests.</td></tr>
+                    ) : (
+                      refillRequests.map(r => (
+                        <tr key={r._id}>
+                          <td>{dayjs(r.createdAt).format('DD-MM-YYYY HH:mm')}</td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{r.requestedBy?.name || 'Supervisor'}</div>
+                            {r.requestedBy?.role && <div style={{ fontSize: '11px', color: '#64748B' }}>{r.requestedBy.role.replace('_', ' ')}</div>}
+                            {r.approvedBy && (
+                              <div style={{ fontSize: '11px', color: '#059669', marginTop: '2px' }}>
+                                ✓ Approved by {r.approvedBy.name} {r.approvedAt ? `(${dayjs(r.approvedAt).format('DD-MM HH:mm')})` : ''}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>₹{r.requestedAmount.toLocaleString('en-IN')}</td>
+                          <td>{r.reason || '—'}</td>
+                          <td><Badge variant={r.status}>{r.status}</Badge></td>
+                          <td>
+                            {r.status === 'pending' && (isSuperAdmin() || isAccounts()) ? (
+                              <Button size="sm" onClick={() => handleApproveRefill(r._id)} isLoading={approvingRefillId === r._id} loadingText="Approving...">Approve Refill</Button>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card List (No Side-Scroll) */}
+            <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
+              {refillRequests.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: '#94A3B8', fontSize: '13px' }}>
+                  No refill requests.
+                </div>
+              ) : (
+                refillRequests.map(r => (
+                  <div key={r._id} className="mobile-data-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '14px', color: '#1E293B' }}>{r.requestedBy?.name || 'Supervisor'}</div>
+                        <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(r.createdAt).format('DD-MM-YYYY HH:mm')}</div>
+                      </div>
+                      <Badge variant={r.status}>{r.status}</Badge>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderTop: '1px solid #F1F5F9', borderBottom: '1px solid #F1F5F9', margin: '8px 0' }}>
+                      <span style={{ fontSize: '12px', color: '#64748B' }}>Amount Requested</span>
+                      <span style={{ fontWeight: 700, fontSize: '14px', color: '#0F172A' }}>₹{r.requestedAmount.toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {r.reason && (
+                      <div style={{ fontSize: '12px', color: '#475569', marginBottom: '8px' }}>
+                        <strong>Reason: </strong>{r.reason}
+                      </div>
+                    )}
+
+                    {r.approvedBy && (
+                      <div style={{ fontSize: '11px', color: '#059669', marginBottom: '8px' }}>
+                        ✓ Approved by {r.approvedBy.name} {r.approvedAt ? `(${dayjs(r.approvedAt).format('DD-MM HH:mm')})` : ''}
+                      </div>
+                    )}
+
+                    {r.status === 'pending' && (isSuperAdmin() || isAccounts()) && (
+                      <div style={{ marginTop: '8px' }}>
+                        <Button size="sm" style={{ width: '100%' }} onClick={() => handleApproveRefill(r._id)} isLoading={approvingRefillId === r._id} loadingText="Approving...">Approve Refill</Button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>
@@ -2382,134 +3073,252 @@ export default function ProjectDetail() {
 )}                </div>
               </div>
 
-              <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Item Name</th>
-                      <th>Source Type</th>
-                      <th>Unit</th>
-                      <th>Received</th>
-                      <th>Used</th>
-                      <th>Balance</th>
-                      <th>Actions</th>
-                      <th>Total Value (₹)</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materials.items.length === 0 ? (
-                      <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials added.</td></tr>
-                    ) : (
-                      materials.items.map(m => {
-                        const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
-                        if (sources.length === 0) {
-                          const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
-                          sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
-                        }
-
-                        return (
-                          <tr key={m._id}>
-                            <td>
-                              <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                {sources.map(src => {
-                                  if (src === 'direct_purchase') {
-                                    return (
-                                      <span
-                                        key="direct"
-                                        className="badge"
-                                        style={{
-                                          backgroundColor: '#EEF2FF',
-                                          color: '#4338CA',
-                                          border: '1px solid #C7D2FE',
-                                          fontWeight: 700,
-                                          fontSize: '11px',
-                                          letterSpacing: '0.02em'
-                                        }}
-                                      >
-                                        DIRECT PURCHASE
-                                      </span>
-                                    );
-                                  }
-                                  if (src === 'petty_cash') {
-                                    return (
-                                      <span
-                                        key="petty"
-                                        className="badge"
-                                        style={{
-                                          backgroundColor: '#FEF3C7',
-                                          color: '#B45309',
-                                          border: '1px solid #FDE68A',
-                                          fontWeight: 700,
-                                          fontSize: '11px',
-                                          letterSpacing: '0.02em'
-                                        }}
-                                      >
-                                        PETTY CASH
-                                      </span>
-                                    );
-                                  }
-                                  return (
-                                    <span
-                                      key="site"
-                                      className="badge"
-                                      style={{
-                                        backgroundColor: '#F1F5F9',
-                                        color: '#475569',
-                                        border: '1px solid #E2E8F0',
-                                        fontWeight: 600,
-                                        fontSize: '11px',
-                                        letterSpacing: '0.02em'
-                                      }}
-                                    >
-                                      SITE STOCK
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                            <td>{m.unit || '—'}</td>
-                            <td style={{ fontWeight: 600 }}>{m.totalReceived}</td>
-                            <td style={{ color: '#DC2626' }}>{m.totalUsed}</td>
-                            <td style={{ fontWeight: 700, color: m.balance > 0 ? '#059669' : '#DC2626' }}>{m.balance}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>
-                              <Button
-                                size="sm"
-                                onClick={() => openMaterialUsageModal(m)}
-                                disabled={project?.status === 'on_hold' && !isSuperAdmin()}
-                              >
-                                Record Usage
-                              </Button>{' '}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openMaterialHistoryModal(m)}
-                              >
-                                History
-                              </Button>
-                            </td>
-                            <td style={{ fontWeight: 600, color: '#0F172A' }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
-                            <td style={{ fontSize: '12px', color: '#64748B' }}>
-                              {m.remarks || (sources.includes('direct_purchase') ? 'Direct company purchase' : (sources.includes('petty_cash') ? 'Petty cash purchase' : '—'))}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                  {materials.items.length > 0 && (
-                    <tfoot>
-                      <tr style={{ fontWeight: 700, backgroundColor: '#F8FAFC' }}>
-                        <td colSpan="4">GRAND TOTAL MATERIAL VALUE</td>
-                        <td colSpan="5" style={{ color: 'var(--color-brand)', fontSize: '15px' }}>₹{(materials.grandTotal || 0).toLocaleString('en-IN')}</td>
+              {/* Desktop Table View */}
+              <div className="desktop-only-table">
+                <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item Name</th>
+                        <th>Source Type</th>
+                        <th>Unit</th>
+                        <th>Received</th>
+                        <th>Used</th>
+                        <th>Balance</th>
+                        <th>Actions</th>
+                        <th>Total Value (₹)</th>
+                        <th>Remarks</th>
                       </tr>
-                    </tfoot>
-                  )}
-                </table>
+                    </thead>
+                    <tbody>
+                      {materials.items.length === 0 ? (
+                        <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials added.</td></tr>
+                      ) : (
+                        materials.items.map(m => {
+                          const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
+                          if (sources.length === 0) {
+                            const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                            sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
+                          }
+
+                          return (
+                            <tr key={m._id}>
+                              <td>
+                                <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {sources.map(src => {
+                                    if (src === 'direct_purchase') {
+                                      return (
+                                        <span
+                                          key="direct"
+                                          className="badge"
+                                          style={{
+                                            backgroundColor: '#EEF2FF',
+                                            color: '#4338CA',
+                                            border: '1px solid #C7D2FE',
+                                            fontWeight: 700,
+                                            fontSize: '11px',
+                                            letterSpacing: '0.02em'
+                                          }}
+                                        >
+                                          DIRECT PURCHASE
+                                        </span>
+                                      );
+                                    }
+                                    if (src === 'petty_cash') {
+                                      return (
+                                        <span
+                                          key="petty"
+                                          className="badge"
+                                          style={{
+                                            backgroundColor: '#FEF3C7',
+                                            color: '#B45309',
+                                            border: '1px solid #FDE68A',
+                                            fontWeight: 700,
+                                            fontSize: '11px',
+                                            letterSpacing: '0.02em'
+                                          }}
+                                        >
+                                          PETTY CASH
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span
+                                        key="site"
+                                        className="badge"
+                                        style={{
+                                          backgroundColor: '#F1F5F9',
+                                          color: '#475569',
+                                          border: '1px solid #E2E8F0',
+                                          fontWeight: 600,
+                                          fontSize: '11px',
+                                          letterSpacing: '0.02em'
+                                        }}
+                                      >
+                                        SITE STOCK
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                              <td>{m.unit || '—'}</td>
+                              <td style={{ fontWeight: 600 }}>{m.totalReceived}</td>
+                              <td style={{ color: '#DC2626' }}>{m.totalUsed}</td>
+                              <td style={{ fontWeight: 700, color: m.balance > 0 ? '#059669' : '#DC2626' }}>{m.balance}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>
+                                <Button
+                                  size="sm"
+                                  onClick={() => openMaterialUsageModal(m)}
+                                  disabled={project?.status === 'on_hold' && !isSuperAdmin()}
+                                >
+                                  Record Usage
+                                </Button>{' '}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openMaterialHistoryModal(m)}
+                                >
+                                  History
+                                </Button>
+                              </td>
+                              <td style={{ fontWeight: 600, color: '#0F172A' }}>₹{(m.balanceValue || 0).toLocaleString('en-IN')}</td>
+                              <td style={{ fontSize: '12px', color: '#64748B' }}>
+                                {m.remarks || (sources.includes('direct_purchase') ? 'Direct company purchase' : (sources.includes('petty_cash') ? 'Petty cash purchase' : '—'))}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                    {materials.items.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 700, backgroundColor: '#F8FAFC' }}>
+                          <td colSpan="4">GRAND TOTAL MATERIAL VALUE</td>
+                          <td colSpan="5" style={{ color: 'var(--color-brand)', fontSize: '15px' }}>₹{(materials.grandTotal || 0).toLocaleString('en-IN')}</td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Card List (No Horizontal Scroll) */}
+              <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
+                {materials.items.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: '#94A3B8', padding: '32px 16px', fontSize: '13px' }}>
+                    No materials added.
+                  </div>
+                ) : (
+                  <>
+                    {materials.items.map(m => {
+                      const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
+                      if (sources.length === 0) {
+                        const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
+                        sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
+                      }
+
+                      return (
+                        <div key={m._id} className="mobile-data-card" style={{ padding: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                            <div>
+                              <strong style={{ fontSize: '15px', color: '#0F172A' }}>{m.itemName}</strong>
+                              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
+                                Unit: <strong>{m.unit || 'Units'}</strong>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Balance Value</span>
+                              <strong style={{ fontSize: '14px', color: 'var(--color-brand)' }}>
+                                ₹{(m.balanceValue || 0).toLocaleString('en-IN')}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                            {sources.map(src => {
+                              if (src === 'direct_purchase') {
+                                return (
+                                  <span key="direct" className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE', fontWeight: 700, fontSize: '10px' }}>
+                                    DIRECT PURCHASE
+                                  </span>
+                                );
+                              }
+                              if (src === 'petty_cash') {
+                                return (
+                                  <span key="petty" className="badge" style={{ backgroundColor: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 700, fontSize: '10px' }}>
+                                    PETTY CASH
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span key="site" className="badge" style={{ backgroundColor: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0', fontWeight: 600, fontSize: '10px' }}>
+                                  SITE STOCK
+                                </span>
+                              );
+                            })}
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', backgroundColor: '#F8FAFC', padding: '8px 10px', borderRadius: '8px', margin: '8px 0', fontSize: '12px', textAlign: 'center' }}>
+                            <div>
+                              <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Received</span>
+                              <strong style={{ color: '#1E293B' }}>{m.totalReceived}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Used</span>
+                              <strong style={{ color: '#DC2626' }}>{m.totalUsed}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748B', display: 'block', fontSize: '11px' }}>Balance</span>
+                              <strong style={{ color: m.balance > 0 ? '#059669' : '#DC2626' }}>{m.balance}</strong>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
+                            <Button
+                              size="sm"
+                              style={{ flex: 1 }}
+                              onClick={() => openMaterialUsageModal(m)}
+                              disabled={project?.status === 'on_hold' && !isSuperAdmin()}
+                            >
+                              Record Usage
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              style={{ flex: 1 }}
+                              onClick={() => openMaterialHistoryModal(m)}
+                            >
+                              History
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Total Material Value Card */}
+                    <div style={{
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      border: '1px solid #E2E8F0',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '6px'
+                    }}>
+                      <span style={{ fontWeight: 700, fontSize: '13px', color: '#1E293B' }}>
+                        GRAND TOTAL MATERIAL VALUE
+                      </span>
+                      <strong style={{ color: 'var(--color-brand)', fontSize: '16px' }}>
+                        ₹{(materials.grandTotal || 0).toLocaleString('en-IN')}
+                      </strong>
+                    </div>
+                  </>
+                )}
               </div>
             </Card>
           </div>
@@ -2574,28 +3383,49 @@ export default function ProjectDetail() {
             <Button size="sm" onClick={handleAddTool}>Add Tool</Button>
           </div>
 
-          <div className="table-scroll-hint"> Swipe horizontally to view tools </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tool Name</th>
-                  <th>Quantity</th>
-                </tr>
-              </thead>
-              <tbody>
-                {!execution?.tools || execution.tools.length === 0 ? (
-                  <tr><td colSpan="2" style={{ textAlign: 'center', color: '#94A3B8' }}>No tools added to site list.</td></tr>
-                ) : (
-                  execution.tools.map(t => (
-                    <tr key={t._id}>
-                      <td><strong>{t.toolName}</strong></td>
-                      <td>{t.quantity}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          {/* Desktop Table View */}
+          <div className="desktop-only-table">
+            <div className="table-scroll-hint"> Swipe horizontally to view tools </div>
+            <div className="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tool Name</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!execution?.tools || execution.tools.length === 0 ? (
+                    <tr><td colSpan="2" style={{ textAlign: 'center', color: '#94A3B8' }}>No tools added to site list.</td></tr>
+                  ) : (
+                    execution.tools.map(t => (
+                      <tr key={t._id}>
+                        <td><strong>{t.toolName}</strong></td>
+                        <td>{t.quantity}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card List (No Horizontal Scroll) */}
+          <div className="mobile-only-card-list" style={{ marginTop: '10px' }}>
+            {!execution?.tools || execution.tools.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#94A3B8', padding: '24px', fontSize: '13px' }}>
+                No tools added to site list.
+              </div>
+            ) : (
+              execution.tools.map(t => (
+                <div key={t._id} className="mobile-data-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px' }}>
+                  <strong style={{ fontSize: '14px', color: '#1E293B' }}>{t.toolName}</strong>
+                  <span className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', fontWeight: 700, fontSize: '13px' }}>
+                    Qty: {t.quantity}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </Card>
       )}
@@ -3616,6 +4446,49 @@ export default function ProjectDetail() {
           <label>Opening Balance Amount (₹) *</label>
           <input type="number" className="input" value={openingBalanceForm} onChange={(e) => setOpeningBalanceForm(e.target.value)} placeholder="50000" />
         </div>
+      </Modal>
+
+      {/* Refill Petty Cash Modal (Admin / Accounts direct refill) */}
+      <Modal
+        isOpen={isDirectRefillModalOpen}
+        onClose={() => setIsDirectRefillModalOpen(false)}
+        title="Refill Petty Cash"
+        footer={(
+          <Button
+            onClick={handleDirectRefill}
+            isLoading={isSubmittingDirectRefill}
+            loadingText="Adding Refill..."
+          >
+            Add Refill
+          </Button>
+        )}
+      >
+        <form onSubmit={handleDirectRefill} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', color: '#166534' }}>
+            Current Balance: <strong>₹{(pettyCash?.currentBalance || 0).toLocaleString('en-IN')}</strong>
+          </div>
+          <div className="form-group">
+            <label>Refill Amount (₹) *</label>
+            <input
+              type="number"
+              className="input"
+              value={directRefillForm.amount}
+              onChange={(e) => setDirectRefillForm({ ...directRefillForm, amount: e.target.value })}
+              placeholder="e.g. 25000"
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Notes / Reference (Optional)</label>
+            <textarea
+              className="input"
+              rows="2"
+              value={directRefillForm.reason}
+              onChange={(e) => setDirectRefillForm({ ...directRefillForm, reason: e.target.value })}
+              placeholder="e.g. Bank transfer, cheque #, or routine replenishment"
+            />
+          </div>
+        </form>
       </Modal>
 
       {/* Add Material Modal */}

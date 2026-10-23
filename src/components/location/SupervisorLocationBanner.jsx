@@ -346,8 +346,7 @@ export default function SupervisorLocationBanner() {
 
   const showFloatingButton =
     !isModalVisible &&
-    !!pendingState.project?._id &&
-    isCurrentSlotStillSubmittable();
+    (!!pendingState.project?._id || (pendingState.availableProjects && pendingState.availableProjects.length > 0));
 
   const floatingQuickButton = showFloatingButton && (
     <div
@@ -790,16 +789,44 @@ export default function SupervisorLocationBanner() {
                 {pendingState.availableProjects && pendingState.availableProjects.length > 1 && (
                   <div style={{
                     width: '100%',
-                    backgroundColor: '#F8FAFC',
+                    backgroundColor: '#F1F5F9',
                     border: '1px solid #E2E8F0',
-                    borderRadius: '8px',
+                    borderRadius: '12px',
                     padding: '12px',
                     textAlign: 'left'
                   }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: '8px' }}>
-                      Active Projects Assigned in Parallel:
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        In Another Site? Switch Project:
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#64748B', fontWeight: 600 }}>
+                        {pendingState.availableProjects.length} Assigned Sites
+                      </span>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+
+                    <select
+                      className="form-control"
+                      value={pendingState.project?._id || ''}
+                      onChange={(e) => checkPendingLocation(e.target.value)}
+                      style={{
+                        width: '100%',
+                        fontSize: '13px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #CBD5E1',
+                        backgroundColor: '#FFFFFF',
+                        marginBottom: '8px',
+                        fontWeight: 600
+                      }}
+                    >
+                      {pendingState.availableProjects.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.code ? `[${p.code}] ` : ''}{p.name} {p.pending ? '— Check-in Due' : '— ✓ Recorded'}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {pendingState.availableProjects.map((p) => {
                         const isSelected = pendingState.project?._id === p._id;
                         return (
@@ -808,9 +835,9 @@ export default function SupervisorLocationBanner() {
                             type="button"
                             onClick={() => checkPendingLocation(p._id)}
                             style={{
-                              padding: '6px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
+                              padding: '5px 10px',
+                              borderRadius: '20px',
+                              fontSize: '11px',
                               fontWeight: 600,
                               cursor: 'pointer',
                               border: isSelected ? '2px solid #2563EB' : '1px solid #CBD5E1',
@@ -818,31 +845,32 @@ export default function SupervisorLocationBanner() {
                               color: isSelected ? '#1D4ED8' : '#334155',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '6px',
+                              gap: '5px',
+                              boxShadow: isSelected ? '0 1px 4px rgba(37,99,235,0.15)' : 'none',
                               transition: 'all 0.15s ease'
                             }}
                           >
-                            <Building2 size={13} color={isSelected ? '#2563EB' : '#64748B'} />
+                            <Building2 size={12} color={isSelected ? '#2563EB' : '#64748B'} />
                             <span>{p.code ? `[${p.code}] ` : ''}{p.name}</span>
                             {p.pending ? (
                               <span style={{
                                 backgroundColor: '#FEE2E2',
                                 color: '#DC2626',
-                                fontSize: '10px',
+                                fontSize: '9px',
                                 padding: '1px 5px',
                                 borderRadius: '10px'
                               }}>
-                                Not Filled
+                                Due
                               </span>
                             ) : (
                               <span style={{
                                 backgroundColor: '#ECFDF5',
                                 color: '#059669',
-                                fontSize: '10px',
+                                fontSize: '9px',
                                 padding: '1px 5px',
                                 borderRadius: '10px'
                               }}>
-                                ✓ Done
+                                ✓
                               </span>
                             )}
                           </button>
