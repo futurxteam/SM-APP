@@ -67,7 +67,7 @@ export default function CareersAdminPage() {
   const [jobSearch, setJobSearch] = useState('');
   const [jobStatusFilter, setJobStatusFilter] = useState('all');
   const [jobDeptFilter, setJobDeptFilter] = useState('all');
-  
+
   // Job Create / Edit Modal
   const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [isSavingJob, setIsSavingJob] = useState(false);
@@ -93,7 +93,7 @@ export default function CareersAdminPage() {
   const [appSearch, setAppSearch] = useState('');
   const [appStatusFilter, setAppStatusFilter] = useState('all');
   const [appJobFilter, setAppJobFilter] = useState('all');
-  
+
   // Application View / Notes Modal
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
   const [selectedApp, setSelectedApp] = useState(null);
@@ -139,7 +139,7 @@ export default function CareersAdminPage() {
       if (res.data?.success) {
         const list = res.data.jobs || res.data.data || [];
         setJobs(list);
-        
+
         // Calculate stats
         const stats = {
           total: list.length,
@@ -254,8 +254,8 @@ export default function CareersAdminPage() {
       const finalDescription = userDesc.length >= 20
         ? userDesc
         : (userDesc
-            ? `${userDesc} - Architecture and interior design role at Hygge Designs.`
-            : `${jobFormData.title.trim()} vacancy at Hygge Designs Architecture Studio.`);
+          ? `${userDesc} - Architecture and interior design role at Hygge Designs.`
+          : `${jobFormData.title.trim()} vacancy at Hygge Designs Architecture Studio.`);
 
       const resolvedType = jobFormData.type || 'full-time';
       const resolvedExp = jobFormData.experience || '1-3 years';
@@ -395,8 +395,8 @@ export default function CareersAdminPage() {
 
   // ── Filters ──
   const filteredJobs = jobs.filter(j => {
-    const matchesSearch = !jobSearch || 
-      j.title?.toLowerCase().includes(jobSearch.toLowerCase()) || 
+    const matchesSearch = !jobSearch ||
+      j.title?.toLowerCase().includes(jobSearch.toLowerCase()) ||
       j.department?.toLowerCase().includes(jobSearch.toLowerCase()) ||
       j.location?.toLowerCase().includes(jobSearch.toLowerCase());
     const matchesStatus = jobStatusFilter === 'all' || j.status === jobStatusFilter;
