@@ -7,6 +7,7 @@ import {
   Users, 
   UserCheck, 
   Activity, 
+  Briefcase,
   LogOut, 
   X
 } from 'lucide-react';
@@ -194,6 +195,26 @@ export default function Sidebar({ isOpen = false, onClose }) {
             >
               <Users size={18} />
               <span>User Accounts</span>
+            </NavLink>
+
+            <NavLink 
+              to="/admin/careers" 
+              onClick={handleLinkClick}
+              style={({ isActive }) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 500,
+                textDecoration: 'none',
+                color: isActive ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+                backgroundColor: isActive ? 'var(--color-sidebar-active-bg)' : 'transparent',
+              })}
+            >
+              <Briefcase size={18} />
+              <span>Careers</span>
             </NavLink>
 
             <NavLink 

@@ -5,7 +5,8 @@ import {
   FolderKanban,
   UserCheck,
   Activity,
-  Users
+  Users,
+  Briefcase
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -63,6 +64,11 @@ export default function BottomNav() {
           <NavLink to="/admin/users" style={linkStyle}>
             <Users size={20} />
             <span>Users</span>
+          </NavLink>
+
+          <NavLink to="/admin/careers" style={linkStyle}>
+            <Briefcase size={20} />
+            <span>Careers</span>
           </NavLink>
 
           <NavLink to="/admin/activity-log" style={linkStyle}>

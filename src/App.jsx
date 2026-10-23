@@ -12,6 +12,7 @@ import ProjectDetail from './pages/projects/ProjectDetail';
 import WorkerMasterPage from './pages/workers/WorkerMasterPage';
 import UsersPage from './pages/admin/UsersPage';
 import ActivityLogPage from './pages/admin/ActivityLogPage';
+import CareersAdminPage from './pages/admin/CareersAdminPage';
 
 const ProtectedRoute = ({ children }) => {
   const { token } = useAuthStore();
@@ -58,6 +59,15 @@ export default function App() {
             element={
               <AdminRoute>
                 <UsersPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="admin/careers"
+            element={
+              <AdminRoute>
+                <CareersAdminPage />
               </AdminRoute>
             }
           />

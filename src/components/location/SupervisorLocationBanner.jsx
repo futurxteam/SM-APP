@@ -133,21 +133,25 @@ export default function SupervisorLocationBanner() {
           })
           : [];
 
+        const chosenProject = (data.hasAtLeastOneOnSiteAlready && validPendingProjects.length > 0)
+          ? (validPendingProjects.find(p => !p.coveredByCoSupervisor) || validPendingProjects[0])
+          : (data.project || validAvailableProjects[0] || null);
+
         setPendingState({
           pending: isOverallPending && validPendingProjects.length > 0,
           pendingCount: isOverallPending ? validPendingProjects.length : 0,
           pendingProjects: validPendingProjects,
           pendingSlot: isOverallPending ? localCurrentSlot : null,
-          slotLabel: slotLabels[localCurrentSlot] || data.project?.slotLabel || data.slotLabel || '',
+          slotLabel: slotLabels[localCurrentSlot] || chosenProject?.slotLabel || data.slotLabel || '',
           currentSlot: localCurrentSlot,
           missedSlots: localMissedSlots,
           recordedSlots,
-          siteCoordinatesMissing: isPeriodFinished ? false : !!data.project?.siteCoordinatesMissing,
-          project: data.project || null,
+          siteCoordinatesMissing: isPeriodFinished ? false : !!chosenProject?.siteCoordinatesMissing,
+          project: chosenProject,
           availableProjects: validAvailableProjects,
-          coveredByCoSupervisor: data.coveredByCoSupervisor || data.project?.coveredByCoSupervisor || null,
-          hasAtLeastOneOnSiteAlready: !!data.hasAtLeastOneOnSiteAlready,
-          onSiteSupervisorName: data.onSiteSupervisorName || null,
+          coveredByCoSupervisor: chosenProject?.coveredByCoSupervisor || null,
+          hasAtLeastOneOnSiteAlready: Boolean(chosenProject?.coveredByCoSupervisor),
+          onSiteSupervisorName: chosenProject?.coveredByCoSupervisor || null,
           markedOnAnotherSite: data.markedOnAnotherSite || null,
           isDoneForInterval,
         });
@@ -999,11 +1003,18 @@ export default function SupervisorLocationBanner() {
                         onChange={(e) => checkPendingLocation(e.target.value)}
                         style={{ cursor: 'pointer', fontWeight: 600 }}
                       >
-                        {pendingState.availableProjects.map((p) => (
-                          <option key={p._id} value={p._id}>
-                            {p.code ? `[${p.code}] ` : ''}{p.name} {p.pending ? '— Check-in Due' : '— ✓ Recorded'}
-                          </option>
-                        ))}
+                        {pendingState.availableProjects.map((p) => {
+                          const labelSuffix = p.coveredBySupervisorName
+                            ? `— ✓ Marked by ${p.coveredBySupervisorName}`
+                            : p.pending
+                            ? '— ⚠️ Check-in Due'
+                            : '— ✓ Recorded';
+                          return (
+                            <option key={p._id} value={p._id}>
+                              {p.code ? `[${p.code}] ` : ''}{p.name} {labelSuffix}
+                            </option>
+                          );
+                        })}
                       </select>
                     ) : (
                       <div className="template-input-control" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

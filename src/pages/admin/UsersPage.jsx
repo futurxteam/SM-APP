@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import api from '../../services/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -6,7 +7,7 @@ import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ExportReportModal from '../../components/common/ExportReportModal';
-import { Plus, Users, Shield, Key, Building2, CheckSquare, XSquare, Search, Download } from 'lucide-react';
+import { Plus, Users, Shield, Key, Building2, CheckSquare, XSquare, Search, Download, Briefcase, Activity } from 'lucide-react';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -142,6 +143,78 @@ export default function UsersPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* ── Top Admin Portal Tabs Bar (Beside Users & Activity Feed) ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        backgroundColor: '#FFFFFF',
+        padding: '8px 12px',
+        borderRadius: '8px',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-xs)'
+      }}>
+        <NavLink
+          to="/admin/users"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 14px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            textDecoration: 'none',
+            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
+            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Users size={16} />
+          <span>User Accounts</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/careers"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 14px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            textDecoration: 'none',
+            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
+            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Briefcase size={16} />
+          <span>Careers & Recruitment</span>
+        </NavLink>
+
+        <NavLink
+          to="/admin/activity-log"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 14px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            textDecoration: 'none',
+            color: isActive ? '#FFFFFF' : 'var(--color-text-secondary)',
+            backgroundColor: isActive ? 'var(--color-brand)' : 'transparent',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Activity size={16} />
+          <span>Activity Feed</span>
+        </NavLink>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2>User Accounts & Project Assignment</h2>
