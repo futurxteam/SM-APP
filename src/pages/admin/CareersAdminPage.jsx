@@ -137,7 +137,7 @@ export default function CareersAdminPage() {
     try {
       const res = await api.get('/jobs/admin/all');
       if (res.data?.success) {
-        const list = res.data.data || [];
+        const list = res.data.jobs || res.data.data || [];
         setJobs(list);
         
         // Calculate stats
@@ -158,14 +158,14 @@ export default function CareersAdminPage() {
     try {
       const res = await api.get('/applications/admin', { params: { limit: 100 } });
       if (res.data?.success) {
-        const list = res.data.data || [];
+        const list = res.data.applications || res.data.data || [];
         setApplications(list);
 
         const stats = {
           total: list.length,
-          new: list.filter(a => a.status === 'new').length,
-          reviewing: list.filter(a => a.status === 'reviewing').length,
-          shortlisted: list.filter(a => a.status === 'shortlisted').length,
+          new: list.filter(a => a.status === 'new' || a.status === 'submitted').length,
+          reviewing: list.filter(a => a.status === 'reviewing' || a.status === 'in_review').length,
+          shortlisted: list.filter(a => a.status === 'shortlisted' || a.status === 'interview').length,
           hired: list.filter(a => a.status === 'hired').length,
           rejected: list.filter(a => a.status === 'rejected').length
         };
@@ -180,7 +180,7 @@ export default function CareersAdminPage() {
     try {
       const res = await api.get('/enquiries/admin', { params: { limit: 100 } });
       if (res.data?.success) {
-        const list = res.data.data || [];
+        const list = res.data.enquiries || res.data.data || [];
         setEnquiries(list);
 
         const stats = {
@@ -415,11 +415,14 @@ export default function CareersAdminPage() {
   });
 
   const filteredEnquiries = enquiries.filter(e => {
+    const textDetails = (e.details || e.message || '');
     const matchesSearch = !enquirySearch ||
       e.name?.toLowerCase().includes(enquirySearch.toLowerCase()) ||
       e.email?.toLowerCase().includes(enquirySearch.toLowerCase()) ||
       e.phone?.toLowerCase().includes(enquirySearch.toLowerCase()) ||
-      e.message?.toLowerCase().includes(enquirySearch.toLowerCase());
+      e.company?.toLowerCase().includes(enquirySearch.toLowerCase()) ||
+      e.location?.toLowerCase().includes(enquirySearch.toLowerCase()) ||
+      textDetails.toLowerCase().includes(enquirySearch.toLowerCase());
     const matchesStatus = enquiryStatusFilter === 'all' || e.status === enquiryStatusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -1223,7 +1226,7 @@ export default function CareersAdminPage() {
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap'
                             }}>
-                              {enq.message}
+                              {enq.details || enq.message || 'No description provided'}
                             </div>
                           </td>
                           <td>
@@ -1294,7 +1297,7 @@ export default function CareersAdminPage() {
                     </div>
 
                     <div style={{ margin: '8px 0', fontSize: '12px', color: 'var(--color-text-primary)' }}>
-                      <strong>{enq.projectType || 'Project Inquiry'}:</strong> {enq.message}
+                      <strong>{enq.projectType || 'Project Inquiry'}:</strong> {enq.details || enq.message || 'No description provided'}
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--color-border)' }}>
@@ -1674,7 +1677,7 @@ export default function CareersAdminPage() {
             </div>
 
             <div>
-              <span className="text-muted" style={{ fontSize: '12px' }}>Client Message:</span>
+              <span className="text-muted" style={{ fontSize: '12px' }}>Client Message / Details:</span>
               <div style={{
                 backgroundColor: '#F8FAFC',
                 padding: '12px',
@@ -1685,7 +1688,7 @@ export default function CareersAdminPage() {
                 whiteSpace: 'pre-line',
                 border: '1px solid var(--color-border)'
               }}>
-                {selectedEnquiry.message}
+                {selectedEnquiry.details || selectedEnquiry.message || 'No description provided'}
               </div>
             </div>
 
