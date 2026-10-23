@@ -19,6 +19,7 @@ import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
 import ScheduleTab from '../../components/projects/ScheduleTab';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
+import ExportReportModal from '../../components/common/ExportReportModal';
 
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
@@ -280,6 +281,20 @@ export default function ProjectDetail() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const [exportModalConfig, setExportModalConfig] = useState({
+    isOpen: false,
+    reportType: 'pettycash',
+    title: 'Export Report',
+  });
+
+  const openExportModal = (reportType, title) => {
+    setExportModalConfig({
+      isOpen: true,
+      reportType,
+      title,
+    });
   };
 
   const handleExportFile = async (endpoint, fileName, mimeType = 'application/pdf') => {
@@ -1353,6 +1368,14 @@ export default function ProjectDetail() {
                     📅 {dayjs(attendanceDate).format('DD MMM YYYY')}
                   </span>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => openExportModal('attendance', 'Attendance & Wages Report')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} /> Export Report
+                </button>
               </div>
             )}
           </div>
@@ -2253,9 +2276,19 @@ export default function ProjectDetail() {
                   Direct invoice records, supplier bills, and materials added to site inventory.
                 </p>
               </div>
-              {(isSuperAdmin() || isAccounts()) && (
-                <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
-              )}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => openExportModal('purchases', 'Direct Company Purchases Report')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Download size={14} /> Export Report
+                </button>
+                {(isSuperAdmin() || isAccounts()) && (
+                  <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
+                )}
+              </div>
             </div>
 
             {/* Desktop Table View */}
@@ -2470,9 +2503,10 @@ export default function ProjectDetail() {
                 <button
                   type="button"
                   className="btn btn-outline btn-sm"
-                  onClick={() => handleExportFile(`/exports/pettycash/${projectId}/excel`, `PettyCash_${project?.code || projectId}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                  onClick={() => openExportModal('pettycash', 'Petty Cash Ledger Report')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
-                  Export Excel
+                  <Download size={14} /> Export Report
                 </button>
                 {(isSuperAdmin() || isAccounts()) && (
                   !(pettyCash?.hasOpeningBalance || pettyCash?.transactions?.some(t => t.type === 'opening_balance') || ledgerTransactions?.some(t => t.type === 'opening_balance')) ? (
@@ -3036,9 +3070,10 @@ export default function ProjectDetail() {
                   <button
                     type="button"
                     className="btn btn-outline btn-sm"
-                    onClick={() => handleExportFile(`/exports/materials/${projectId}/excel`, `Materials_${project?.code || projectId}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')}
+                    onClick={() => openExportModal('materials', 'Site Materials Inventory Report')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                   >
-                    Export Excel
+                    <Download size={14} /> Export Report
                   </button>
 {isSiteSupervisor() ? (
   <Button
@@ -5093,6 +5128,17 @@ export default function ProjectDetail() {
           </div>
         </form>
       </Modal>
+
+      {/* Universal Export Report Modal */}
+      <ExportReportModal
+        isOpen={exportModalConfig.isOpen}
+        onClose={() => setExportModalConfig(prev => ({ ...prev, isOpen: false }))}
+        title={exportModalConfig.title}
+        reportType={exportModalConfig.reportType}
+        projectId={projectId}
+        projectCode={project?.code}
+        defaultSupervisorId={project?.assignedSupervisor?._id}
+      />
     </div>
   );
 }

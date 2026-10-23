@@ -8,6 +8,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ExpenseDonutChart from '../../components/charts/ExpenseDonutChart';
 import GanttTimelineChart from '../../components/charts/GanttTimelineChart';
 import DailyExpenditureReport from '../../components/dashboard/DailyExpenditureReport';
+import ExportReportModal from '../../components/common/ExportReportModal';
 import {
   Building2,
   IndianRupee,
@@ -22,7 +23,8 @@ import {
   FolderKanban,
   RotateCcw,
   MapPin,
-  Calendar
+  Calendar,
+  Download
 } from 'lucide-react';
 
 const scheduleBadgeVariant = (status) => ({
@@ -48,6 +50,7 @@ export default function Dashboard() {
   const [ganttProjects, setGanttProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isGeoExportOpen, setIsGeoExportOpen] = useState(false);
 
   const loadDashboardData = async (projId = selectedProjectId, isInitial = false) => {
     if (!isInitial) setIsRefreshing(true);
@@ -143,7 +146,24 @@ export default function Dashboard() {
             Hygge Architects Site & Project Operations Overview
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setIsGeoExportOpen(true)}
+            className="btn btn-secondary"
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.15)',
+              borderColor: 'rgba(255,255,255,0.3)',
+              color: '#FFFFFF',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <Download size={15} />
+            <span>Geo Attendance Report</span>
+          </button>
           <button 
             onClick={() => navigate('/projects')}
             className="btn btn-primary"
@@ -615,6 +635,16 @@ export default function Dashboard() {
           </Card>
         </div>
       )}
+
+      {/* Supervisor Geo Attendance Report Modal */}
+      <ExportReportModal
+        isOpen={isGeoExportOpen}
+        onClose={() => setIsGeoExportOpen(false)}
+        title="Supervisor Geo-Attendance Report"
+        reportType="geo-attendance"
+        projectId={selectedProjectId !== 'all' ? selectedProjectId : ''}
+        defaultProjectId={selectedProjectId !== 'all' ? selectedProjectId : 'all'}
+      />
     </div>
   );
 }

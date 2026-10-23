@@ -4,7 +4,8 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Plus, Search, UserCheck, Phone, Wrench, IndianRupee, History } from 'lucide-react';
+import ExportReportModal from '../../components/common/ExportReportModal';
+import { Plus, Search, UserCheck, Phone, Wrench, IndianRupee, History, Download } from 'lucide-react';
 
 export default function WorkerMasterPage() {
   const [workers, setWorkers] = useState([]);
@@ -12,6 +13,7 @@ export default function WorkerMasterPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1, hasMore: false });
   const [isLoading, setIsLoading] = useState(true);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
@@ -97,7 +99,10 @@ export default function WorkerMasterPage() {
           <p className="text-muted">Global registry of site workers, skilled labour, and contractors</p>
         </div>
 
-        <Button icon={Plus} onClick={() => setIsModalOpen(true)}>Add New Worker</Button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <Button variant="outline" icon={Download} onClick={() => setIsExportModalOpen(true)}>Export Directory</Button>
+          <Button icon={Plus} onClick={() => setIsModalOpen(true)}>Add New Worker</Button>
+        </div>
       </div>
 
       <Card>
@@ -437,6 +442,14 @@ export default function WorkerMasterPage() {
           </div>
         )}
       </Modal>
+
+      {/* Export Worker Directory Modal */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="Export Worker Master Directory"
+        reportType="workers"
+      />
     </div>
   );
 }

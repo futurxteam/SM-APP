@@ -5,7 +5,8 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
-import { Plus, Users, Shield, Key, Building2, CheckSquare, XSquare, Search } from 'lucide-react';
+import ExportReportModal from '../../components/common/ExportReportModal';
+import { Plus, Users, Shield, Key, Building2, CheckSquare, XSquare, Search, Download } from 'lucide-react';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -14,6 +15,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 30, total: 0, totalPages: 1, hasMore: false });
   const [isLoading, setIsLoading] = useState(true);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
@@ -146,7 +148,10 @@ export default function UsersPage() {
           <p className="text-muted">Manage company staff accounts and assign project access</p>
         </div>
 
-        <Button icon={Plus} onClick={() => setIsCreateModalOpen(true)}>Create New Account</Button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <Button variant="outline" icon={Download} onClick={() => setIsExportModalOpen(true)}>Export Directory</Button>
+          <Button icon={Plus} onClick={() => setIsCreateModalOpen(true)}>Create New Account</Button>
+        </div>
       </div>
 
       <Card>
@@ -390,6 +395,14 @@ export default function UsersPage() {
           <input type="password" className="input" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="Minimum 6 characters" required />
         </form>
       </Modal>
+
+      {/* Export Users Directory Modal */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="Export Users & Staff Directory"
+        reportType="users"
+      />
     </div>
   );
 }

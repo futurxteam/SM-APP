@@ -5,12 +5,13 @@ import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import TrackingMap from './TrackingMap';
 import ProjectCoordinateModal from './ProjectCoordinateModal';
+import ExportReportModal from '../common/ExportReportModal';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
   MapPin, Calendar, Clock, Navigation, Download,
   CheckCircle2, AlertTriangle, XCircle, Settings,
-  ExternalLink, User, ShieldCheck, RefreshCw
+  ExternalLink, User, ShieldCheck, RefreshCw, FileSpreadsheet
 } from 'lucide-react';
 
 export default function LocationTrackingTab({ projectId, project, onProjectUpdated }) {
@@ -21,6 +22,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCoordModalOpen, setIsCoordModalOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   useEffect(() => {
     loadLocationLogs();
@@ -120,9 +122,9 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                 variant="secondary"
                 size="sm"
                 icon={Download}
-                onClick={handleExportCSV}
+                onClick={() => setIsExportModalOpen(true)}
               >
-                Export CSV
+                Export Report
               </Button>
             </div>
           </div>
@@ -656,6 +658,17 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
           }}
         />
       )}
+
+      {/* Supervisor Geo Attendance Report Modal */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        title="Supervisor Geo-Attendance Report"
+        reportType="geo-attendance"
+        projectId={projectId}
+        projectCode={project?.code}
+        defaultSupervisorId={supervisor?._id || 'all'}
+      />
     </div>
   );
 }
