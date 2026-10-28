@@ -218,6 +218,26 @@ export default function Sidebar({ isOpen = false, onClose }) {
             </NavLink>
 
             <NavLink 
+              to="/admin/portfolio" 
+              onClick={handleLinkClick}
+              style={({ isActive }) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 500,
+                textDecoration: 'none',
+                color: isActive ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+                backgroundColor: isActive ? 'var(--color-sidebar-active-bg)' : 'transparent',
+              })}
+            >
+              <FolderKanban size={18} />
+              <span>Website Projects</span>
+            </NavLink>
+
+            <NavLink 
               to="/admin/activity-log" 
               onClick={handleLinkClick}
               style={({ isActive }) => ({
