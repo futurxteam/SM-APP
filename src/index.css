@@ -755,6 +755,9 @@ tr:hover td {
   .mobile-bottom-nav {
     display: flex !important;
   }
+  .mobile-bottom-nav::-webkit-scrollbar {
+    display: none;
+  }
   .content-container {
     padding: var(--space-4) var(--space-3) !important;
   }

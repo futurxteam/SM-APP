@@ -6,7 +6,8 @@ import {
   UserCheck,
   Activity,
   Users,
-  Briefcase
+  Briefcase,
+  Globe
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -17,13 +18,21 @@ export default function BottomNav() {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '2px',
+    justifyContent: 'center',
+    gap: '3px',
     textDecoration: 'none',
     color: isActive
       ? 'var(--color-brand)'
       : 'var(--color-text-secondary)',
     fontSize: '11px',
-    fontWeight: isActive ? 600 : 400
+    fontWeight: isActive ? 600 : 500,
+    minWidth: '68px',
+    flexShrink: 0,
+    padding: '6px 8px',
+    borderRadius: '8px',
+    backgroundColor: isActive ? 'rgba(30, 64, 175, 0.08)' : 'transparent',
+    transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap'
   });
 
   return (
@@ -33,14 +42,21 @@ export default function BottomNav() {
         bottom: 0,
         left: 0,
         right: 0,
-        height: 'var(--bottomnav-height)',
+        height: 'var(--bottomnav-height, 62px)',
         backgroundColor: '#FFFFFF',
         borderTop: '1px solid var(--color-border)',
         display: 'none',
         alignItems: 'center',
-        justifyContent: 'space-around',
+        justifyContent: isSuperAdmin() ? 'flex-start' : 'space-around',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+        padding: '0 8px',
+        gap: '4px',
         zIndex: 100,
-        boxShadow: '0 -2px 10px rgba(0,0,0,0.05)'
+        boxShadow: '0 -2px 10px rgba(0,0,0,0.06)'
       }}
       className="mobile-bottom-nav"
     >
@@ -69,6 +85,11 @@ export default function BottomNav() {
           <NavLink to="/admin/careers" style={linkStyle}>
             <Briefcase size={20} />
             <span>Careers</span>
+          </NavLink>
+
+          <NavLink to="/admin/portfolio" style={linkStyle}>
+            <Globe size={20} />
+            <span>Website Projects - CMS</span>
           </NavLink>
 
           <NavLink to="/admin/activity-log" style={linkStyle}>
