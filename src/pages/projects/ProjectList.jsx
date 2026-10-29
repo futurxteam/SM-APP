@@ -9,8 +9,9 @@ import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import api from '../../services/api';
 import { getCurrentPosition } from '../../services/geolocationService';
-import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle, X } from 'lucide-react';
+import { Plus, Building2, Calendar, MapPin, ArrowRight, User, Navigation, CheckCircle2, MoreVertical, PauseCircle, PlayCircle, Trash2, AlertTriangle, X, FileSpreadsheet } from 'lucide-react';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
+import SeedDataModal from '../../components/projects/SeedDataModal';
 
 const scheduleBadgeVariant = (status) => ({
   completed: 'completed', in_progress: 'active', delayed: 'on_hold', on_hold: 'on_hold', not_started: 'upcoming'
@@ -28,6 +29,7 @@ export default function ProjectList() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [users, setUsers] = useState([]);
   const [activeMenuId, setActiveMenuId] = useState(null);
+  const [seedingProject, setSeedingProject] = useState(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -228,6 +230,34 @@ export default function ProjectList() {
                                   <span>Put on Hold</span>
                                 </>
                               )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuId(null);
+                                setSeedingProject(p);
+                              }}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '8px 12px',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                color: 'var(--color-brand, #2563EB)',
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              <FileSpreadsheet size={14} />
+                              <span>Seed Historical Data</span>
                             </button>
 
                             <div style={{ height: '1px', backgroundColor: 'var(--color-border)', margin: '4px 0' }} />
@@ -532,6 +562,18 @@ export default function ProjectList() {
           </div>
         </form>
       </Modal>
+
+      {/* Seed Historical Data Modal */}
+      {seedingProject && (
+        <SeedDataModal
+          isOpen={Boolean(seedingProject)}
+          onClose={() => setSeedingProject(null)}
+          project={seedingProject}
+          onSuccess={() => {
+            fetchProjects(filter);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -13,13 +13,14 @@ import {
   Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download,
   Plus, AlertCircle, CheckCircle, Clock, Upload, Trash2, Edit3, MapPin,
   Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image,
-  ShieldCheck, ShieldAlert, Crosshair, RefreshCw, Navigation
+  ShieldCheck, ShieldAlert, Crosshair, RefreshCw, Navigation, FileSpreadsheet
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
 import ScheduleTab from '../../components/projects/ScheduleTab';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 import ExportReportModal from '../../components/common/ExportReportModal';
+import SeedDataModal from '../../components/projects/SeedDataModal';
 
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
@@ -100,6 +101,7 @@ export default function ProjectDetail() {
   const [openingBalanceForm, setOpeningBalanceForm] = useState('');
   const [isOpeningModalOpen, setIsOpeningModalOpen] = useState(false);
   const [isSettingOpeningBalance, setIsSettingOpeningBalance] = useState(false);
+  const [isSeedModalOpen, setIsSeedModalOpen] = useState(false);
   const [isDirectRefillModalOpen, setIsDirectRefillModalOpen] = useState(false);
   const [isSubmittingDirectRefill, setIsSubmittingDirectRefill] = useState(false);
   const [directRefillForm, setDirectRefillForm] = useState({ amount: '', reason: '' });
@@ -2508,6 +2510,17 @@ export default function ProjectDetail() {
                 >
                   <Download size={14} /> Export Report
                 </button>
+                {isSuperAdmin() && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setIsSeedModalOpen(true)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#0284C7', borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' }}
+                    title="Seed historical transactions, workers, attendance and materials from Excel"
+                  >
+                    <FileSpreadsheet size={14} /> Seed Data
+                  </button>
+                )}
                 {(isSuperAdmin() || isAccounts()) && (
                   !(pettyCash?.hasOpeningBalance || pettyCash?.transactions?.some(t => t.type === 'opening_balance') || ledgerTransactions?.some(t => t.type === 'opening_balance')) ? (
                     <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
@@ -2560,7 +2573,25 @@ export default function ProjectDetail() {
                             {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
                           </td>
                           <td>
-                            {t.receiptImage ? <a href={t.receiptImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)' }}>View Receipt</a> : '—'}
+                            {t.receiptImage ? (
+                              <a href={t.receiptImage} target="_blank" rel="noreferrer" style={{ color: 'var(--color-brand)' }}>View Receipt</a>
+                            ) : (t.isSeeded || t.seedSource === 'excel_seed' || !t.hasProof) ? (
+                              <span style={{
+                                backgroundColor: '#FEF3C7',
+                                color: '#92400E',
+                                fontSize: '11px',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                <FileSpreadsheet size={11} /> Seeded by Excel
+                              </span>
+                            ) : (
+                              '—'
+                            )}
                           </td>
                           <td>
                             <div style={{ fontWeight: 600, color: '#1E293B' }}>{t.addedBy?.name || 'System/Admin'}</div>
@@ -2638,6 +2669,21 @@ export default function ProjectDetail() {
                       color: '#64748B'
                     }}>
                       <span>By {t.addedBy?.name || 'System'}</span>
+                      {(t.isSeeded || t.seedSource === 'excel_seed' || !t.hasProof) && (
+                        <span style={{
+                          backgroundColor: '#FEF3C7',
+                          color: '#92400E',
+                          fontSize: '10px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}>
+                          <FileSpreadsheet size={10} /> Seeded
+                        </span>
+                      )}
                       <span style={{ color: '#2563EB', fontWeight: 600 }}>Tap for details →</span>
                     </div>
                   </div>
@@ -2770,8 +2816,8 @@ export default function ProjectDetail() {
                     )}
                   </div>
 
-                  {/* Receipt Image / Invoice Preview */}
-                  {selectedTransactionDetail.receiptImage && (
+                  {/* Receipt Image / Invoice Preview or Seeded Notice */}
+                  {selectedTransactionDetail.receiptImage ? (
                     <div style={{ marginTop: '16px' }}>
                       <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
                         Receipt Attachment
@@ -2804,7 +2850,28 @@ export default function ProjectDetail() {
                         </div>
                       </a>
                     </div>
-                  )}
+                  ) : (selectedTransactionDetail.isSeeded || selectedTransactionDetail.seedSource === 'excel_seed' || !selectedTransactionDetail.hasProof) ? (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px 14px',
+                      backgroundColor: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px'
+                    }}>
+                      <FileSpreadsheet size={18} color="#D97706" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#92400E' }}>
+                          Seeded Historical Record (No Proof Attached)
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#B45309', marginTop: '2px', lineHeight: 1.4 }}>
+                          This transaction was imported via historical Excel seed data. Physical invoice or receipt was not attached.
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {/* Done button */}
                   <button
@@ -5139,6 +5206,21 @@ export default function ProjectDetail() {
         projectCode={project?.code}
         defaultSupervisorId={project?.assignedSupervisor?._id}
       />
+
+      {/* Seed Historical Data Modal */}
+      {isSeedModalOpen && project && (
+        <SeedDataModal
+          isOpen={isSeedModalOpen}
+          onClose={() => setIsSeedModalOpen(false)}
+          project={project}
+          onSuccess={() => {
+            loadProjectData();
+            loadPettyCash();
+            loadMaterials();
+            loadPurchases();
+          }}
+        />
+      )}
     </div>
   );
 }
