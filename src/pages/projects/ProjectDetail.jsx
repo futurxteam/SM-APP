@@ -1055,22 +1055,33 @@ export default function ProjectDetail() {
   const dailyAttendanceSummary = useMemo(() => {
     let totalWages = 0;
     let totalPaid = 0;
+    let extra = 0;
+    let balanceDue = 0;
     const entries = attendanceData.entries || [];
 
     entries.forEach(entry => {
       const rate = Number(entry.worker?.dailyRate || 0);
-      let multiplier = 1;
-      if (entry.dutyType === 'half_day') multiplier = 0.5;
-      else if (entry.dutyType === 'overtime') multiplier = 1.5;
-      else if (entry.dutyType === 'custom_hours') multiplier = (Number(entry.dutyHours) || 8) / 8;
+      const paid = Number(entry.amountPaid || 0);
+      totalPaid += paid;
 
-      totalWages += rate * multiplier;
-      totalPaid += Number(entry.amountPaid || 0);
+      if (rate > 0) {
+        let multiplier = 1;
+        if (entry.dutyType === 'half_day') multiplier = 0.5;
+        else if (entry.dutyType === 'overtime') multiplier = 1.5;
+        else if (entry.dutyType === 'custom_hours') multiplier = (Number(entry.dutyHours) || 8) / 8;
+
+        const expectedWage = rate * multiplier;
+        totalWages += expectedWage;
+
+        const diff = paid - expectedWage;
+        if (diff > 0) extra += diff;
+        else if (diff < 0) balanceDue += Math.abs(diff);
+      } else {
+        // When daily rate is 0 (Contract, Permanent, or Unset):
+        // Any amount paid is the direct wage/advance for today, NOT an "Extra" or "Overpayment"
+        totalWages += paid;
+      }
     });
-
-    const diff = totalPaid - totalWages; // positive = extra amount paid over wages
-    const extra = diff > 0 ? diff : 0;
-    const balanceDue = diff < 0 ? Math.abs(diff) : 0;
 
     return {
       presentCount: entries.length,
@@ -1078,7 +1089,7 @@ export default function ProjectDetail() {
       totalPaid: Math.round(totalPaid),
       extra: Math.round(extra),
       balanceDue: Math.round(balanceDue),
-      diff: Math.round(diff)
+      diff: Math.round(totalPaid - totalWages)
     };
   }, [attendanceData]);
 
@@ -1570,7 +1581,9 @@ export default function ProjectDetail() {
                                         <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', display: 'flex', gap: '8px', alignItems: 'center' }}>
                                           <span>{w.skill || 'General'}</span>
                                           <span>•</span>
-                                          <span style={{ fontWeight: 600, color: '#059669' }}>₹{w.dailyRate || 0}/day</span>
+                                          <span style={{ fontWeight: 600, color: '#059669' }}>
+                                            {w.dailyRate > 0 ? `₹${w.dailyRate}/day` : w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}
+                                          </span>
                                           {w.phone && (
                                             <>
                                               <span>•</span>
@@ -1688,7 +1701,9 @@ export default function ProjectDetail() {
                                       </div>
                                     </td>
                                     <td>
-                                      <span style={{ fontWeight: 600 }}>₹{worker.dailyRate || 0}</span>
+                                      <span style={{ fontWeight: 600 }}>
+                                        {worker.dailyRate > 0 ? `₹${worker.dailyRate}` : worker.workerType === 'contract' ? 'Contract' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
+                                      </span>
                                     </td>
                                     <td>
                                       <input
@@ -1801,7 +1816,7 @@ export default function ProjectDetail() {
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <span className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', fontWeight: 700, fontSize: '12px' }}>
-                                    ₹{worker.dailyRate || 0}/day
+                                    {worker.dailyRate > 0 ? `₹${worker.dailyRate}/day` : worker.workerType === 'contract' ? 'Contract' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
                                   </span>
                                   <button
                                     type="button"
@@ -2042,7 +2057,9 @@ export default function ProjectDetail() {
                                     <div>{item.skill || 'General'}</div>
                                     <span className="text-muted text-xs">{item.workerType?.replace('_', ' ') || 'daily wage'}</span>
                                   </td>
-                                  <td>₹{item.dailyRate || 0}</td>
+                                  <td>
+                                    {item.dailyRate > 0 ? `₹${item.dailyRate}` : item.workerType === 'contract' ? 'Contract' : item.workerType === 'permanent' ? 'Permanent' : '—'}
+                                  </td>
                                   <td>{item.daysWorked} days</td>
                                   <td style={{ fontWeight: 600 }}>₹{item.totalEarned?.toLocaleString('en-IN')}</td>
                                   <td style={{ fontWeight: 600, color: '#059669' }}>₹{item.totalPaid?.toLocaleString('en-IN')}</td>

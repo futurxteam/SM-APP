@@ -156,7 +156,9 @@ export default function WorkerMasterPage() {
                       <td><span className="badge badge-active">{w.skill || 'General'}</span></td>
                       <td>{w.phone || '—'}</td>
                       <td><span style={{ textTransform: 'capitalize' }}>{w.workerType.replace('_', ' ')}</span></td>
-                      <td style={{ fontWeight: 600 }}>₹{w.dailyRate} / day</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {w.dailyRate > 0 ? `₹${w.dailyRate} / day` : w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}
+                      </td>
                       <td>
                         <Button size="sm" variant="outline" icon={History} onClick={() => handleViewHistory(w._id)}>History</Button>
                       </td>
@@ -226,7 +228,11 @@ export default function WorkerMasterPage() {
                     <span>{w.phone || 'No phone'}</span>
                   </div>
                   <div style={{ fontWeight: 700, color: '#0F172A' }}>
-                    ₹{w.dailyRate} <span style={{ fontSize: '10px', color: '#64748B', fontWeight: 500 }}>/ day</span>
+                    {w.dailyRate > 0 ? (
+                      <>₹{w.dailyRate} <span style={{ fontSize: '10px', color: '#64748B', fontWeight: 500 }}>/ day</span></>
+                    ) : (
+                      <span style={{ color: '#64748B', fontWeight: 500 }}>{w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}</span>
+                    )}
                   </div>
                 </div>
 
