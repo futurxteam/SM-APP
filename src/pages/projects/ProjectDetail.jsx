@@ -51,7 +51,8 @@ export default function ProjectDetail() {
   const [isCreatingWorker, setIsCreatingWorker] = useState(false);
   const [newWorkerForm, setNewWorkerForm] = useState({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
 
-  const [purchases, setPurchases] = useState([]);
+  const [purchases, setPurchases] = useState(null);
+  const [isPurchasesLoading, setIsPurchasesLoading] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState({
@@ -142,6 +143,7 @@ export default function ProjectDetail() {
   const [sitePhotosFiles, setSitePhotosFiles] = useState([]);
   const [labourPaymentFile, setLabourPaymentFile] = useState(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingSeedData, setIsExportingSeedData] = useState(false);
 
   // Edit Project Details State (Admin / Project Manager)
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
@@ -372,12 +374,29 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleExportSeedData = async () => {
+    if (isExportingSeedData) return;
+    setIsExportingSeedData(true);
+    try {
+      await handleExportFile(
+        `/projects/${projectId}/seed/export`,
+        `Seed_Data_${project?.code || projectId}_${dayjs().format('YYYYMMDD')}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+    } finally {
+      setIsExportingSeedData(false);
+    }
+  };
+
   // Load modules on tab switch
   useEffect(() => {
     if (activeTab === 'attendance') {
       loadAttendance();
     }
-    if (activeTab === 'purchases') loadPurchases();
+    if (activeTab === 'purchases') {
+      loadPurchases();
+      if (!materials) loadMaterials();
+    }
     if (activeTab === 'pettycash') loadPettyCash();
     if (activeTab === 'materials') loadMaterials();
     if (activeTab === 'execution') loadExecution();
@@ -567,11 +586,15 @@ export default function ProjectDetail() {
 
   // --- PURCHASES ---
   const loadPurchases = async () => {
+    setIsPurchasesLoading(true);
     try {
       const res = await api.get(`/projects/${projectId}/purchases`);
-      setPurchases(res.data.data);
+      setPurchases(res.data.data || []);
     } catch (err) {
       console.error(err);
+      setPurchases(prev => prev || []);
+    } finally {
+      setIsPurchasesLoading(false);
     }
   };
 
@@ -1125,13 +1148,31 @@ export default function ProjectDetail() {
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {!isSiteSupervisor() && (
-              <button
-                type="button"
-                onClick={handleOpenEditProject}
-                className="btn btn-primary btn-sm"
-              >
-                <Edit3 size={14} /> Edit Project
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleOpenEditProject}
+                  className="btn btn-primary btn-sm"
+                >
+                  <Edit3 size={14} /> Edit Project
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportSeedData}
+                  disabled={isExportingSeedData}
+                  className="btn btn-outline btn-sm"
+                  style={{
+                    color: '#0284C7',
+                    borderColor: '#BAE6FD',
+                    backgroundColor: '#F0F9FF',
+                    opacity: isExportingSeedData ? 0.7 : 1
+                  }}
+                  title="Export project data as a seed Excel file to seed another project"
+                >
+                  {isExportingSeedData ? <RefreshCw size={14} className="spin-icon" /> : <FileSpreadsheet size={14} />}
+                  <span>{isExportingSeedData ? 'Exporting Seed...' : 'Export Seed Data'}</span>
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -1285,6 +1326,22 @@ export default function ProjectDetail() {
                     onClick={handleOpenEditProject}
                   >
                     <Edit3 size={14} /> Edit Project Details
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleExportSeedData}
+                    disabled={isExportingSeedData}
+                    style={{
+                      color: '#0284C7',
+                      borderColor: '#BAE6FD',
+                      backgroundColor: '#F0F9FF',
+                      opacity: isExportingSeedData ? 0.7 : 1
+                    }}
+                    title="Export project data as a seed Excel file to seed another project"
+                  >
+                    {isExportingSeedData ? <RefreshCw size={14} className="spin-icon" /> : <FileSpreadsheet size={14} />}
+                    <span>{isExportingSeedData ? 'Exporting Seed...' : 'Export Seed Data'}</span>
                   </button>
                   <button
                     type="button"
@@ -2226,7 +2283,7 @@ export default function ProjectDetail() {
 
       {/* TAB 3: DIRECT PURCHASES */}
       {activeTab === 'purchases' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        isPurchasesLoading || !purchases ? <LoadingSpinner text="Loading direct purchases..." style={{ padding: '48px' }} /> : <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Direct Purchases KPI Breakdown */}
           {(() => {
             const totalDirectPurchases = purchases.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
