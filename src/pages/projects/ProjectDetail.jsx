@@ -397,7 +397,10 @@ export default function ProjectDetail() {
       loadPurchases();
       if (!materials) loadMaterials();
     }
-    if (activeTab === 'pettycash') loadPettyCash();
+    if (activeTab === 'pettycash') {
+      loadPettyCash();
+      if (!materials) loadMaterials();
+    }
     if (activeTab === 'materials') loadMaterials();
     if (activeTab === 'execution') loadExecution();
     if (activeTab === 'closure') loadClosure();
@@ -714,9 +717,9 @@ export default function ProjectDetail() {
       return;
     }
 
-    const isMat = expenseForm.category === 'material' || expenseForm.isMaterialPurchase;
+    const isMat = Boolean(expenseForm.isMaterialPurchase);
     if (isMat && !expenseForm.selectedItemId && (!expenseForm.materialName?.trim() || !expenseForm.materialQuantity || Number(expenseForm.materialQuantity) <= 0)) {
-      alert('Please enter a material name and a valid quantity.');
+      alert('Please select an existing material or enter a new material name and a valid quantity (or uncheck "Track in Material Inventory").');
       return;
     }
 
@@ -726,8 +729,8 @@ export default function ProjectDetail() {
     formData.append('description', expenseForm.description);
     formData.append('amount', expenseForm.amount);
     formData.append('receiptImage', expenseFile);
+    formData.append('isMaterialPurchase', isMat ? 'true' : 'false');
     if (isMat) {
-      formData.append('isMaterialPurchase', 'true');
       if (expenseForm.selectedItemId) {
         formData.append('selectedItemId', expenseForm.selectedItemId);
       }
@@ -773,6 +776,29 @@ export default function ProjectDetail() {
       }
     } finally {
       setIsSubmittingExpense(false);
+    }
+  };
+
+  const handleToggleExpenseMaterialTracking = async (tx, shouldTrack) => {
+    if (!tx?._id) return;
+    try {
+      let materialName = tx.materialName || tx.description || '';
+      let materialQuantity = tx.materialQuantity || 1;
+      let materialUnit = tx.materialUnit || 'Units';
+      if (shouldTrack && !materialName.trim()) {
+        const entered = window.prompt('Enter Material Item Name to track in Materials List:', tx.description || '');
+        if (!entered || !entered.trim()) return;
+        materialName = entered.trim();
+      }
+      await api.put(`/projects/${projectId}/pettycash/transactions/${tx._id}/material-tracking`, {
+        track: shouldTrack,
+        materialName,
+        materialQuantity,
+        materialUnit,
+      });
+      await Promise.all([loadPettyCash(), loadMaterials()]);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update material tracking for this expense.');
     }
   };
 
@@ -1122,6 +1148,56 @@ export default function ProjectDetail() {
 
   const { financials } = summary || {};
 
+  const timelineInfo = (() => {
+    if (!project?.endDate && project?.daysRemaining == null) {
+      return {
+        shortText: project?.status === 'completed' ? 'Completed' : 'Active timeline',
+        detailLabel: 'Days Remaining:',
+        detailValue: 'N/A',
+        color: '#64748B',
+        isHighlighted: false,
+      };
+    }
+
+    const days = project.daysRemaining != null
+      ? Number(project.daysRemaining)
+      : dayjs(project.endDate).startOf('day').diff(dayjs(project.status === 'completed' && project.completedAt ? project.completedAt : undefined).startOf('day'), 'day');
+
+    if (project.status === 'completed') {
+      if (days > 0) {
+        const txt = `Took ${days} ${days === 1 ? 'day' : 'days'} less`;
+        return { shortText: txt, detailLabel: 'Days Remaining:', detailValue: txt, color: '#059669', isHighlighted: true };
+      }
+      if (days < 0) {
+        const extra = Math.abs(days);
+        const txt = `Took ${extra} ${extra === 1 ? 'day' : 'days'} more`;
+        return { shortText: txt, detailLabel: 'Days Remaining:', detailValue: txt, color: '#D97706', isHighlighted: true };
+      }
+      return { shortText: 'Completed on time', detailLabel: 'Days Remaining:', detailValue: 'Completed on time', color: '#059669', isHighlighted: true };
+    }
+
+    if (days < 0) {
+      const overdue = Math.abs(days);
+      return {
+        shortText: `Overdue by ${overdue} ${overdue === 1 ? 'day' : 'days'} (Took ${overdue} ${overdue === 1 ? 'day' : 'days'} more)`,
+        detailLabel: 'Days Remaining:',
+        detailValue: `Overdue by ${overdue} ${overdue === 1 ? 'day' : 'days'} (Took ${overdue} ${overdue === 1 ? 'day' : 'days'} more)`,
+        color: '#DC2626',
+        isHighlighted: true,
+      };
+    }
+    if (days === 0) {
+      return { shortText: 'Due today', detailLabel: 'Days Remaining:', detailValue: 'Due today', color: '#D97706', isHighlighted: true };
+    }
+    return {
+      shortText: `${days} ${days === 1 ? 'day' : 'days'} remaining`,
+      detailLabel: 'Days Remaining:',
+      detailValue: `${days} ${days === 1 ? 'day' : 'days'} remaining`,
+      color: '#64748B',
+      isHighlighted: false,
+    };
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Back Button & Project Banner Header */}
@@ -1259,8 +1335,8 @@ export default function ProjectDetail() {
               <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Badge variant={project.status}>{project.status.replace('_', ' ').toUpperCase()}</Badge>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748B', marginTop: '6px' }}>
-                {project.daysRemaining ? `${project.daysRemaining} days remaining` : 'Active timeline'}
+              <div style={{ fontSize: '11px', color: timelineInfo.color, fontWeight: timelineInfo.isHighlighted ? 600 : 400, marginTop: '6px' }}>
+                {timelineInfo.shortText}
               </div>
             </Card>
 
@@ -1357,7 +1433,12 @@ export default function ProjectDetail() {
               <div><strong>Start Date:</strong> {project.startDate ? dayjs(project.startDate).format('DD MMM YYYY') : 'N/A'}</div>
               <div><strong>End Date:</strong> {project.endDate ? dayjs(project.endDate).format('DD MMM YYYY') : 'N/A'}</div>
               <div><strong>Duration:</strong> {project.durationDays ? `${project.durationDays} days` : 'N/A'}</div>
-              <div><strong>Days Remaining:</strong> {project.daysRemaining ? `${project.daysRemaining} days` : 'N/A'}</div>
+              <div>
+                <strong>{timelineInfo.detailLabel}</strong>{' '}
+                <span style={{ color: timelineInfo.isHighlighted ? timelineInfo.color : 'inherit', fontWeight: timelineInfo.isHighlighted ? 600 : 400 }}>
+                  {timelineInfo.detailValue}
+                </span>
+              </div>
               <div><strong>Project Manager:</strong> {project.assignedManager?.name || 'Unassigned'}</div>
               <div>
                 <strong>Site Supervisor(s):</strong>{' '}
@@ -2602,7 +2683,7 @@ export default function ProjectDetail() {
                     <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Refill Petty Cash</Button>
                   )
                 )}
-                <Button size="sm" icon={Plus} onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
+                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); setIsExpenseModalOpen(true); }}>Add Expense</Button>
                 <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); setLedgerPage(1); }}>
                   <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
                 </select>
@@ -2642,7 +2723,42 @@ export default function ProjectDetail() {
                             </Badge>
                           </td>
                           <td>{t.category === 'custom' ? t.customCategoryName : (t.category || '—')}</td>
-                          <td>{t.description || '—'}</td>
+                          <td>
+                            <div>{t.description || '—'}</div>
+                            {t.type === 'expense' && (t.category === 'material' || t.isMaterialPurchase || t.materialName) && (
+                              <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {t.isMaterialPurchase && !t.materialUntracked ? (
+                                  <>
+                                    <span style={{ fontSize: '11px', fontWeight: 600, backgroundColor: '#DCFCE7', color: '#166534', padding: '2px 6px', borderRadius: '4px' }}>
+                                      📦 Tracked in Materials ({t.materialName || t.description})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleExpenseMaterialTracking(t, false)}
+                                      style={{ fontSize: '11px', color: '#DC2626', background: 'none', border: '1px solid #FECACA', borderRadius: '4px', padding: '1px 6px', cursor: 'pointer' }}
+                                      title="Remove this expense item from Materials List"
+                                    >
+                                      Don't Track
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: '11px', color: '#64748B', backgroundColor: '#F1F5F9', padding: '2px 6px', borderRadius: '4px' }}>
+                                      Not tracked in Materials List
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleExpenseMaterialTracking(t, true)}
+                                      style={{ fontSize: '11px', fontWeight: 600, color: '#0284C7', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '4px', padding: '1px 6px', cursor: 'pointer' }}
+                                      title="Add & track this expense item in Materials List"
+                                    >
+                                      + Add to Materials
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ fontWeight: 600, color: t.type === 'expense' ? '#DC2626' : '#059669' }}>
                             {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
                           </td>
@@ -4438,7 +4554,40 @@ export default function ProjectDetail() {
             />
           </div>
 
-          {(expenseForm.category === 'material' || expenseForm.isMaterialPurchase) && (
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: expenseForm.isMaterialPurchase ? '#92400E' : '#475569',
+            backgroundColor: expenseForm.isMaterialPurchase ? '#FEF3C7' : '#F8FAFC',
+            border: expenseForm.isMaterialPurchase ? '1px solid #FCD34D' : '1px solid #E2E8F0',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            cursor: 'pointer'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(expenseForm.isMaterialPurchase)}
+                onChange={(e) => setExpenseForm({ ...expenseForm, isMaterialPurchase: e.target.checked })}
+              />
+              <span>📦 Track & Add in Material Inventory (Petty Cash Sourced)</span>
+            </div>
+            <span style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              backgroundColor: expenseForm.isMaterialPurchase ? '#FDE68A' : '#E2E8F0',
+              color: expenseForm.isMaterialPurchase ? '#92400E' : '#64748B'
+            }}>
+              {expenseForm.isMaterialPurchase ? 'Tracked in Materials' : 'Not Tracked'}
+            </span>
+          </label>
+
+          {expenseForm.isMaterialPurchase && (
             <div style={{
               backgroundColor: '#FEF3C7',
               border: '1px solid #FCD34D',
@@ -4448,9 +4597,6 @@ export default function ProjectDetail() {
               flexDirection: 'column',
               gap: '10px'
             }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#92400E' }}>
-                📦 Track in Material Inventory (Petty Cash Sourced)
-              </div>
 
               {/* ── Material Selector ── */}
               <div className="form-group">

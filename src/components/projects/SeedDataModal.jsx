@@ -31,6 +31,7 @@ export default function SeedDataModal({ isOpen, onClose, project, onSuccess }) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [seedResult, setSeedResult] = useState(null);
+  const [trackExpenseMaterials, setTrackExpenseMaterials] = useState(true);
 
   useEffect(() => {
     if (isOpen && project?._id) {
@@ -105,6 +106,7 @@ export default function SeedDataModal({ isOpen, onClose, project, onSuccess }) {
 
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('trackExpenseMaterials', trackExpenseMaterials ? 'true' : 'false');
 
       const res = await api.post(`/projects/${project._id}/seed/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -430,6 +432,28 @@ export default function SeedDataModal({ isOpen, onClose, project, onSuccess }) {
                   <span>{uploadError}</span>
                 </div>
               )}
+
+              {/* Option to Track or Not Track Seeded Material Expenses in Material List */}
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#92400E',
+                backgroundColor: '#FEF3C7',
+                border: '1px solid #FCD34D',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={trackExpenseMaterials}
+                  onChange={(e) => setTrackExpenseMaterials(e.target.checked)}
+                />
+                <span>📦 Track & add seeded material expenses / direct purchases into Materials List</span>
+              </label>
 
               {/* Upload Action Button */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
