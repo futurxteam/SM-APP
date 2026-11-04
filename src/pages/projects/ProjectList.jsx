@@ -23,14 +23,14 @@ export default function ProjectList() {
   const { projects, fetchProjects, isLoading } = useProjectStore();
   const { isSuperAdmin } = useAuthStore();
   const navigate = useNavigate();
-  
+
   const [filter, setFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [users, setUsers] = useState([]);
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [seedingProject, setSeedingProject] = useState(null);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     code: '',
@@ -53,7 +53,7 @@ export default function ProjectList() {
   useEffect(() => {
     fetchProjects(filter);
     if (isSuperAdmin()) {
-      api.get('/admin/users').then(res => setUsers(res.data.data)).catch(() => {});
+      api.get('/admin/users').then(res => setUsers(res.data.data)).catch(() => { });
     }
   }, [filter]);
 
@@ -66,7 +66,7 @@ export default function ProjectList() {
   const handleToggleHold = async (project, e) => {
     if (e) e.stopPropagation();
     const isHold = project.status === 'on_hold';
-    const actionText = isHold 
+    const actionText = isHold
       ? `resume project "${project.name}" to Ongoing`
       : `put project "${project.name}" ON HOLD? This will lock all site operations for supervisors`;
     if (!window.confirm(`Are you sure you want to ${actionText}?`)) {
@@ -78,7 +78,7 @@ export default function ProjectList() {
       setActiveMenuId(null);
       fetchProjects(filter);
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update project hold status');
+      alert(err.response?.data?.message || 'Failed to update project hold  status');
     }
   };
 
@@ -422,7 +422,7 @@ export default function ProjectList() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-           
+
 
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
               <label>Site Supervisor(s)</label>
