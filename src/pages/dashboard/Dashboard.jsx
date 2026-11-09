@@ -170,7 +170,7 @@ export default function Dashboard() {
             <Download size={15} />
             <span>Geo Attendance Report</span>
           </button>
-          <button 
+          <button
             onClick={() => navigate('/projects')}
             className="btn btn-primary"
             style={{ backgroundColor: '#2563EB', borderColor: '#2563EB', flexShrink: 0 }}
@@ -285,7 +285,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => navigate('/projects')}
             className="btn btn-sm"
             style={{ backgroundColor: '#D97706', color: '#FFF' }}
@@ -317,7 +317,7 @@ export default function Dashboard() {
             overflow: 'hidden',
             textOverflow: 'ellipsis'
           }}>
-            {selectedProjectId === 'all' 
+            {selectedProjectId === 'all'
               ? (projects?.total || 0)
               : (activeSelectedProject?.name || '1 Project')}
           </div>
@@ -340,7 +340,7 @@ export default function Dashboard() {
             ₹{(financials?.grandTotalExpense || 0).toLocaleString('en-IN')}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-            Direct Purchases + Petty Cash Expenses
+            Direct Expenses + Petty Cash Expenses
           </div>
         </Card>
 

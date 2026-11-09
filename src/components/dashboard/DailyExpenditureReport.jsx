@@ -174,7 +174,7 @@ export default function DailyExpenditureReport() {
                   Daily & Overall Expenditure Report
                 </h2>
                 <p style={{ fontSize: '12px', color: '#64748B', margin: '2px 0 0 0' }}>
-                  Unified expenditure ledger across all sites: Company Direct Purchases + Petty Cash + Labour Wages
+                  Unified expenditure ledger across all sites: Company Direct Expenses + Petty Cash + Labour Wages
                 </p>
               </div>
             </div>

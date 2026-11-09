@@ -108,7 +108,7 @@ export default function ActivityLogPage() {
               <option value="">All Modules</option>
               <option value="attendance">Attendance</option>
               <option value="petty_cash">Petty Cash</option>
-              <option value="purchases">Direct Purchases</option>
+              <option value="purchases">Direct Expenses</option>
               <option value="materials">Materials</option>
               <option value="execution">Execution</option>
               <option value="closure">Closure</option>
