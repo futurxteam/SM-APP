@@ -51,6 +51,14 @@ export default function ProjectDetail() {
   const [isCreatingWorker, setIsCreatingWorker] = useState(false);
   const [newWorkerForm, setNewWorkerForm] = useState({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage', vendorName: '' });
 
+  const calcRentalDays = (acqDate, retDate) => {
+    if (!acqDate || !retDate) return 1;
+    const d1 = dayjs(acqDate).startOf('day');
+    const d2 = dayjs(retDate).startOf('day');
+    if (!d1.isValid() || !d2.isValid()) return 1;
+    return Math.max(1, d2.diff(d1, 'day'));
+  };
+
   const [purchases, setPurchases] = useState(null);
   const [isPurchasesLoading, setIsPurchasesLoading] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
@@ -60,6 +68,11 @@ export default function ProjectDetail() {
     description: '',
     amount: '',
     isMaterialPurchase: true,
+    isRental: false,
+    useRentalCalc: false,
+    perDayRental: '',
+    acquiredDate: dayjs().format('YYYY-MM-DD'),
+    returnDate: '',
     selectedItemId: '',
     isNewMaterial: false,
     materialName: '',
@@ -86,6 +99,10 @@ export default function ProjectDetail() {
     description: '',
     amount: '',
     isMaterialPurchase: false,
+    useRentalCalc: false,
+    perDayRental: '',
+    acquiredDate: dayjs().format('YYYY-MM-DD'),
+    returnDate: '',
     selectedItemId: '',
     isNewMaterial: false,
     materialName: '',
@@ -116,9 +133,13 @@ export default function ProjectDetail() {
     isNewMaterial: false,
     itemName: '',
     source: 'site_stock',
+    useRentalCalc: false,
     unit: 'Bags',
     quantity: '',
     unitCost: '',
+    perDayRental: '',
+    acquiredDate: dayjs().format('YYYY-MM-DD'),
+    returnDate: '',
     totalValue: '',
     remarks: '',
     date: dayjs().format('YYYY-MM-DD')
@@ -639,11 +660,20 @@ export default function ProjectDetail() {
       alert('Invoice image/document is required!');
       return;
     }
+    const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental');
+    const useCalc = isRent && Boolean(purchaseForm.useRentalCalc);
     const formData = new FormData();
     formData.append('category', purchaseForm.category);
+    formData.append('purchaseType', isRent ? 'rental' : 'direct_expense');
     formData.append('description', purchaseForm.description);
     formData.append('amount', purchaseForm.amount);
     formData.append('isMaterialPurchase', purchaseForm.isMaterialPurchase);
+    formData.append('isRental', isRent ? 'true' : 'false');
+    if (useCalc) {
+      if (purchaseForm.perDayRental) formData.append('perDayRental', purchaseForm.perDayRental);
+      if (purchaseForm.acquiredDate) formData.append('acquiredDate', purchaseForm.acquiredDate);
+      if (purchaseForm.returnDate) formData.append('returnDate', purchaseForm.returnDate);
+    }
     if (purchaseForm.isMaterialPurchase) {
       if (purchaseForm.selectedItemId) {
         formData.append('selectedItemId', purchaseForm.selectedItemId);
@@ -651,7 +681,9 @@ export default function ProjectDetail() {
       formData.append('materialName', purchaseForm.materialName || purchaseForm.category);
       formData.append('materialUnit', purchaseForm.materialUnit || 'Bags');
       formData.append('materialQuantity', purchaseForm.materialQuantity || 1);
-      const unitCost = purchaseForm.materialUnitCost || (purchaseForm.materialQuantity ? (Number(purchaseForm.amount) / Number(purchaseForm.materialQuantity)).toFixed(2) : purchaseForm.amount);
+      const unitCost = useCalc && purchaseForm.perDayRental
+        ? purchaseForm.perDayRental
+        : (purchaseForm.materialUnitCost || (purchaseForm.materialQuantity ? (Number(purchaseForm.amount) / Number(purchaseForm.materialQuantity)).toFixed(2) : purchaseForm.amount));
       formData.append('materialUnitCost', unitCost);
     }
     formData.append('invoiceImage', purchaseFile);
@@ -665,6 +697,11 @@ export default function ProjectDetail() {
         description: '',
         amount: '',
         isMaterialPurchase: true,
+        isRental: false,
+        useRentalCalc: false,
+        perDayRental: '',
+        acquiredDate: dayjs().format('YYYY-MM-DD'),
+        returnDate: '',
         selectedItemId: '',
         isNewMaterial: false,
         materialName: '',
@@ -749,27 +786,42 @@ export default function ProjectDetail() {
     }
 
     const isMat = expenseForm.category === 'material' && Boolean(expenseForm.isMaterialPurchase);
+    const isRentalPaid = expenseForm.category === 'tools_rental';
     if (isMat && !expenseForm.selectedItemId && (!expenseForm.materialName?.trim() || !expenseForm.materialQuantity || Number(expenseForm.materialQuantity) <= 0)) {
       alert('Please select an existing material or enter a new material name and a valid quantity (or uncheck "Track in Material Inventory").');
+      return;
+    }
+    if (isRentalPaid && !expenseForm.selectedItemId && !expenseForm.materialName?.trim()) {
+      alert('Please select the rented material/tool from site inventory (or choose "+ Register New Rental Item").');
       return;
     }
 
     const formData = new FormData();
     formData.append('category', expenseForm.category);
     formData.append('customCategoryName', expenseForm.customCategoryName);
-    formData.append('description', expenseForm.description);
+    formData.append('description', expenseForm.description || (isRentalPaid && expenseForm.materialName ? `Rental paid: ${expenseForm.materialName}` : ''));
     formData.append('amount', expenseForm.amount);
     formData.append('receiptImage', expenseFile);
     formData.append('isMaterialPurchase', isMat ? 'true' : 'false');
-    if (isMat) {
+    formData.append('isRentalPayment', isRentalPaid ? 'true' : 'false');
+    if (isMat || isRentalPaid) {
       if (expenseForm.selectedItemId) {
         formData.append('selectedItemId', expenseForm.selectedItemId);
       }
-      formData.append('materialName', expenseForm.materialName.trim());
-      formData.append('materialUnit', expenseForm.materialUnit || 'Bags');
-      formData.append('materialQuantity', expenseForm.materialQuantity);
+      if (expenseForm.materialName?.trim()) {
+        formData.append('materialName', expenseForm.materialName.trim());
+      }
+      formData.append('materialUnit', expenseForm.materialUnit || 'Units');
+      if (expenseForm.materialQuantity) {
+        formData.append('materialQuantity', expenseForm.materialQuantity);
+      }
       if (expenseForm.materialUnitCost) {
         formData.append('materialUnitCost', expenseForm.materialUnitCost);
+      }
+      if (isRentalPaid && expenseForm.useRentalCalc) {
+        if (expenseForm.perDayRental) formData.append('perDayRental', expenseForm.perDayRental);
+        if (expenseForm.acquiredDate) formData.append('acquiredDate', expenseForm.acquiredDate);
+        if (expenseForm.returnDate) formData.append('returnDate', expenseForm.returnDate);
       }
     }
 
@@ -783,6 +835,10 @@ export default function ProjectDetail() {
         description: '',
         amount: '',
         isMaterialPurchase: false,
+        useRentalCalc: false,
+        perDayRental: '',
+        acquiredDate: dayjs().format('YYYY-MM-DD'),
+        returnDate: '',
         selectedItemId: '',
         isNewMaterial: false,
         materialName: '',
@@ -793,7 +849,7 @@ export default function ProjectDetail() {
       setExpenseFile(null);
       loadPettyCash();
       loadProjectData();
-      if (isMat) {
+      if (isMat || isRentalPaid) {
         loadMaterials();
         loadProjectData();
       }
@@ -909,14 +965,36 @@ export default function ProjectDetail() {
     }
     try {
       setIsSubmittingMaterial(true);
+      const isRent = materialForm.source === 'rental';
+      const useCalc = isRent && Boolean(materialForm.useRentalCalc);
       const payload = {
         ...materialForm,
         source: materialForm.source || 'site_stock',
+        isRental: isRent,
+        perDayRental: useCalc ? (materialForm.perDayRental || materialForm.unitCost) : '',
+        acquiredDate: useCalc ? materialForm.acquiredDate : '',
+        returnDate: useCalc ? materialForm.returnDate : '',
       };
       await api.post(`/projects/${projectId}/materials/items`, payload);
       setIsMaterialModalOpen(false);
-      setMaterialForm({ selectedItemId: '', isNewMaterial: false, itemName: '', source: 'site_stock', unit: 'Bags', quantity: '', unitCost: '', totalValue: '', remarks: '', date: dayjs().format('YYYY-MM-DD') });
+      setMaterialForm({
+        selectedItemId: '',
+        isNewMaterial: false,
+        itemName: '',
+        source: 'site_stock',
+        useRentalCalc: false,
+        unit: 'Bags',
+        quantity: '',
+        unitCost: '',
+        perDayRental: '',
+        acquiredDate: dayjs().format('YYYY-MM-DD'),
+        returnDate: '',
+        totalValue: '',
+        remarks: '',
+        date: dayjs().format('YYYY-MM-DD')
+      });
       loadMaterials();
+      loadProjectData();
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to add material');
     } finally {
@@ -2734,7 +2812,16 @@ export default function ProjectDetail() {
                               {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
                             </Badge>
                           </td>
-                          <td>{t.category === 'custom' ? t.customCategoryName : (t.category || '—')}</td>
+                          <td>
+                            {t.category === 'custom'
+                              ? t.customCategoryName
+                              : (t.category === 'tools_rental' || t.category === 'rental' ? 'Rental Paid' : (t.category || '—'))}
+                            {t.materialName && (t.isRentalPayment || t.category === 'tools_rental' || t.category === 'rental') && (
+                              <div style={{ fontSize: '11px', color: '#6D28D9', fontWeight: 600, marginTop: '2px' }}>
+                                🏷️ {t.materialName}
+                              </div>
+                            )}
+                          </td>
                           <td>{t.description || '—'}</td>
                           <td style={{ fontWeight: 600, color: t.type === 'expense' ? '#DC2626' : '#059669' }}>
                             {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
@@ -2790,7 +2877,14 @@ export default function ProjectDetail() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: '14px', color: '#1E293B', textTransform: 'capitalize' }}>
-                          {t.category === 'custom' ? t.customCategoryName : (t.category || 'General')}
+                          {t.category === 'custom'
+                            ? t.customCategoryName
+                            : (t.category === 'tools_rental' || t.category === 'rental' ? 'Rental Paid' : (t.category || 'General'))}
+                          {t.materialName && (t.isRentalPayment || t.category === 'tools_rental' || t.category === 'rental') && (
+                            <span style={{ fontSize: '11px', color: '#6D28D9', fontWeight: 600, marginLeft: '6px' }}>
+                              • {t.materialName}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
                           {dayjs(t.date).format('DD MMM YYYY')} • {dayjs(t.createdAt || t.date).format('hh:mm A')}
@@ -3366,6 +3460,7 @@ export default function ProjectDetail() {
                       ) : (
                         materials.items.map(m => {
                           const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
+                          if (m.isRental && !sources.includes('rental')) sources.push('rental');
                           if (sources.length === 0) {
                             const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
                             sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
@@ -3375,10 +3470,34 @@ export default function ProjectDetail() {
                             <tr key={m._id}>
                               <td>
                                 <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
+                                {(m.isRental || sources.includes('rental')) && (m.perDayRental > 0 || m.acquiredDate) && (
+                                  <div style={{ fontSize: '11px', color: '#7C3AED', marginTop: '2px', fontWeight: 500 }}>
+                                    ₹{(m.perDayRental || m.unitCost || 0).toLocaleString('en-IN')}/day
+                                    {m.acquiredDate && m.returnDate ? ` • ${dayjs(m.acquiredDate).format('DD MMM')} → ${dayjs(m.returnDate).format('DD MMM')} (${m.rentalDays || calcRentalDays(m.acquiredDate, m.returnDate)}d)` : ''}
+                                  </div>
+                                )}
                               </td>
                               <td>
                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                   {sources.map(src => {
+                                    if (src === 'rental') {
+                                      return (
+                                        <span
+                                          key="rental"
+                                          className="badge"
+                                          style={{
+                                            backgroundColor: '#F5F3FF',
+                                            color: '#7C3AED',
+                                            border: '1px solid #DDD6FE',
+                                            fontWeight: 700,
+                                            fontSize: '11px',
+                                            letterSpacing: '0.02em'
+                                          }}
+                                        >
+                                          RENTAL
+                                        </span>
+                                      );
+                                    }
                                     if (src === 'direct_purchase') {
                                       return (
                                         <span
@@ -3485,6 +3604,7 @@ export default function ProjectDetail() {
                   <>
                     {materials.items.map(m => {
                       const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
+                      if (m.isRental && !sources.includes('rental')) sources.push('rental');
                       if (sources.length === 0) {
                         const isLegacyDirect = m.source === 'direct_purchase' || m.source === 'Direct Purchase' || m.isDirectPurchase || m.remarks?.toLowerCase().includes('direct') || m.remarks?.toLowerCase().includes('invoice');
                         sources.push(isLegacyDirect ? 'direct_purchase' : 'site_stock');
@@ -3498,6 +3618,12 @@ export default function ProjectDetail() {
                               <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
                                 Unit: <strong>{m.unit || 'Units'}</strong>
                               </div>
+                              {(m.isRental || sources.includes('rental')) && (m.perDayRental > 0 || m.acquiredDate) && (
+                                <div style={{ fontSize: '11px', color: '#7C3AED', marginTop: '2px', fontWeight: 600 }}>
+                                  ₹{(m.perDayRental || m.unitCost || 0).toLocaleString('en-IN')}/day
+                                  {m.acquiredDate && m.returnDate ? ` • ${dayjs(m.acquiredDate).format('DD MMM')} → ${dayjs(m.returnDate).format('DD MMM')} (${m.rentalDays || calcRentalDays(m.acquiredDate, m.returnDate)}d)` : ''}
+                                </div>
+                              )}
                             </div>
                             <div style={{ textAlign: 'right' }}>
                               <span style={{ fontSize: '11px', color: '#64748B', display: 'block' }}>Balance Value</span>
@@ -3509,6 +3635,13 @@ export default function ProjectDetail() {
 
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '8px' }}>
                             {sources.map(src => {
+                              if (src === 'rental') {
+                                return (
+                                  <span key="rental" className="badge" style={{ backgroundColor: '#F5F3FF', color: '#7C3AED', border: '1px solid #DDD6FE', fontWeight: 700, fontSize: '10px' }}>
+                                    RENTAL
+                                  </span>
+                                );
+                              }
                               if (src === 'direct_purchase') {
                                 return (
                                   <span key="direct" className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE', fontWeight: 700, fontSize: '10px' }}>
@@ -4294,17 +4427,25 @@ export default function ProjectDetail() {
                 value={purchaseForm.category}
                 onChange={(e) => {
                   const cat = e.target.value;
+                  const isRentCat = cat === 'Rental';
                   const isMat = !['Tools & Machinery', 'Subcontractor & Services', 'Logistics & Transportation', 'Miscellaneous'].includes(cat);
+                  const days = calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate);
+                  const qty = Number(purchaseForm.materialQuantity) || 1;
+                  const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
+                  const nextAmt = isRentCat && rate > 0 ? (qty * rate * days).toFixed(2) : purchaseForm.amount;
                   setPurchaseForm({
                     ...purchaseForm,
                     category: cat,
+                    isRental: isRentCat ? true : purchaseForm.isRental,
                     isMaterialPurchase: isMat,
+                    amount: nextAmt,
                     materialName: isMat && !purchaseForm.materialName ? cat : purchaseForm.materialName
                   });
                 }}
                 required
               >
                 <option value="Material">Material (General)</option>
+                <option value="Rental">Rental (Tools / Equipment / Material Rental)</option>
                 <option value="Cement">Cement & Aggregates</option>
                 <option value="Steel & Rebar">Steel & Rebar</option>
                 <option value="Sand & Aggregates">Sand & Aggregates</option>
@@ -4330,6 +4471,103 @@ export default function ProjectDetail() {
               />
             </div>
           </div>
+
+          {(purchaseForm.isRental || purchaseForm.category === 'Rental') && (
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#6D28D9', backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(purchaseForm.useRentalCalc)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    const days = calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate);
+                    const qty = Number(purchaseForm.materialQuantity) || 1;
+                    const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
+                    const nextAmt = checked && rate > 0 ? (qty * rate * days).toFixed(2) : purchaseForm.amount;
+                    setPurchaseForm({
+                      ...purchaseForm,
+                      useRentalCalc: checked,
+                      amount: nextAmt
+                    });
+                  }}
+                />
+                <span>Calculate Rental by Per-Day Rate & Acquired/Return Dates (Optional)</span>
+              </div>
+              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: purchaseForm.useRentalCalc ? '#DDD6FE' : '#E2E8F0', color: purchaseForm.useRentalCalc ? '#5B21B6' : '#64748B' }}>
+                {purchaseForm.useRentalCalc ? 'Auto Per-Day Calc' : 'Flat Amount (Opted Out)'}
+              </span>
+            </label>
+          )}
+
+          {(purchaseForm.isRental || purchaseForm.category === 'Rental') && purchaseForm.useRentalCalc && (
+            <div style={{ backgroundColor: '#F5F3FF', padding: '12px', borderRadius: '6px', border: '1px solid #DDD6FE', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="responsive-grid-3col" style={{ gap: '10px' }}>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Per Day Rental Rate (₹/day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 500"
+                    value={purchaseForm.perDayRental}
+                    onChange={(e) => {
+                      const perDay = e.target.value;
+                      const days = calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate);
+                      const qty = Number(purchaseForm.materialQuantity) || 1;
+                      const amt = perDay ? (qty * Number(perDay) * days).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        perDayRental: perDay,
+                        materialUnitCost: perDay,
+                        amount: amt
+                      });
+                    }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Acquired Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={purchaseForm.acquiredDate}
+                    onChange={(e) => {
+                      const acq = e.target.value;
+                      const days = calcRentalDays(acq, purchaseForm.returnDate);
+                      const qty = Number(purchaseForm.materialQuantity) || 1;
+                      const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
+                      const amt = rate > 0 ? (qty * rate * days).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({ ...purchaseForm, acquiredDate: acq, amount: amt });
+                    }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Return Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={purchaseForm.returnDate}
+                    onChange={(e) => {
+                      const ret = e.target.value;
+                      const days = calcRentalDays(purchaseForm.acquiredDate, ret);
+                      const qty = Number(purchaseForm.materialQuantity) || 1;
+                      const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
+                      const amt = rate > 0 ? (qty * rate * days).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({ ...purchaseForm, returnDate: ret, amount: amt });
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#5B21B6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#EDE9FE', padding: '6px 10px', borderRadius: '4px' }}>
+                <span>
+                  Rental Duration: <strong>{calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate)} day(s)</strong>
+                  {purchaseForm.materialQuantity ? ` × Qty ${purchaseForm.materialQuantity}` : ' × Qty 1'}
+                  {purchaseForm.perDayRental ? ` × ₹${purchaseForm.perDayRental}/day` : ''}
+                </span>
+                <strong>Auto Total: ₹{Number(purchaseForm.amount || 0).toLocaleString('en-IN')}</strong>
+              </div>
+            </div>
+          )}
 
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#3730A3', backgroundColor: '#EEF2FF', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
             <input
@@ -4435,8 +4673,10 @@ export default function ProjectDetail() {
                     value={purchaseForm.materialQuantity}
                     onChange={(e) => {
                       const qty = e.target.value;
-                      const unitCost = purchaseForm.materialUnitCost;
-                      const amount = qty && unitCost ? (Number(qty) * Number(unitCost)).toFixed(2) : purchaseForm.amount;
+                      const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
+                      const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
+                      const unitCost = isRent ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost;
+                      const amount = qty && unitCost ? (Number(qty) * Number(unitCost) * days).toFixed(2) : purchaseForm.amount;
                       setPurchaseForm({ ...purchaseForm, materialQuantity: qty, amount: amount || purchaseForm.amount });
                     }}
                     required
@@ -4444,19 +4684,28 @@ export default function ProjectDetail() {
                 </div>
 
                 <div className="form-group">
-                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit Rate (₹/unit)</label>
+                  <label style={{ fontWeight: 600, fontSize: '12px' }}>
+                    {(purchaseForm.isRental || purchaseForm.category === 'Rental') ? 'Per Day Rate (₹/day)' : 'Unit Rate (₹/unit)'}
+                  </label>
                   <input
                     type="number"
                     min="0"
                     step="any"
                     className="input"
                     placeholder="e.g. 380"
-                    value={purchaseForm.materialUnitCost}
+                    value={(purchaseForm.isRental || purchaseForm.category === 'Rental') ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost}
                     onChange={(e) => {
                       const rate = e.target.value;
-                      const qty = purchaseForm.materialQuantity;
-                      const amount = qty && rate ? (Number(qty) * Number(rate)).toFixed(2) : purchaseForm.amount;
-                      setPurchaseForm({ ...purchaseForm, materialUnitCost: rate, amount: amount || purchaseForm.amount });
+                      const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
+                      const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
+                      const qty = purchaseForm.materialQuantity || (isRent ? 1 : '');
+                      const amount = qty && rate ? (Number(qty) * Number(rate) * days).toFixed(2) : purchaseForm.amount;
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        materialUnitCost: rate,
+                        ...(isRent ? { perDayRental: rate } : {}),
+                        amount: amount || purchaseForm.amount
+                      });
                     }}
                   />
                 </div>
@@ -4511,18 +4760,21 @@ export default function ProjectDetail() {
               value={expenseForm.category}
               onChange={(e) => {
                 const cat = e.target.value;
-                if (cat === 'material' && !materials) {
+                if ((cat === 'material' || cat === 'tools_rental') && !materials) {
                   loadMaterials();
                 }
                 setExpenseForm({
                   ...expenseForm,
                   category: cat,
                   isMaterialPurchase: cat === 'material' ? true : false,
-                  ...(cat !== 'material' ? { selectedItemId: '', isNewMaterial: false, materialName: '', materialQuantity: '', materialUnitCost: '' } : {})
+                  ...((cat !== 'material' && cat !== 'tools_rental')
+                    ? { selectedItemId: '', isNewMaterial: false, materialName: '', materialQuantity: '', materialUnitCost: '', useRentalCalc: false, perDayRental: '', returnDate: '' }
+                    : {})
                 });
               }}
             >
               <option value="material">Material charges</option>
+              <option value="tools_rental">Rental Paid (Select Material / Tool from Inventory)</option>
               <option value="transportation">Transportation charges</option>
               <option value="labour">Labour charges</option>
               <option value="fuel">Fuel expenses</option>
@@ -4546,11 +4798,223 @@ export default function ProjectDetail() {
             <label>Description / Purpose</label>
             <input
               className="input"
-              placeholder="e.g. Bought emergency binding wire from local hardware"
+              placeholder={expenseForm.category === 'tools_rental' ? 'e.g. Paid rental for drilling machine / scaffolding' : 'e.g. Bought emergency binding wire from local hardware'}
               value={expenseForm.description}
               onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
             />
           </div>
+
+          {expenseForm.category === 'tools_rental' && (
+            <div style={{
+              backgroundColor: '#F5F3FF',
+              border: '1px solid #DDD6FE',
+              borderRadius: '8px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#5B21B6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>🏷️ Rental Paid — Select Material / Tool from Inventory</span>
+                <span style={{ fontSize: '11px', backgroundColor: '#EDE9FE', color: '#6D28D9', padding: '2px 8px', borderRadius: '12px' }}>
+                  Updates Material List & Petty Cash
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px', color: '#4C1D95' }}>Select Material / Tool from Inventory *</label>
+                <select
+                  className="input"
+                  value={expenseForm.selectedItemId || (expenseForm.isNewMaterial ? '__new__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__new__') {
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedItemId: '',
+                        isNewMaterial: true,
+                        materialName: '',
+                        materialUnit: 'Units',
+                        materialQuantity: '1'
+                      });
+                    } else if (val === '') {
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedItemId: '',
+                        isNewMaterial: false,
+                        materialName: '',
+                        materialUnit: 'Units',
+                        materialQuantity: ''
+                      });
+                    } else {
+                      const item = (materials?.items || []).find(i => i._id === val);
+                      const itemQty = item?.balance > 0 ? String(item.balance) : '1';
+                      const itemPerDay = item?.perDayRental ? String(item.perDayRental) : (item?.unitCost ? String(item.unitCost) : '');
+                      const itemAcq = item?.acquiredDate ? dayjs(item.acquiredDate).format('YYYY-MM-DD') : expenseForm.acquiredDate;
+                      const itemRet = item?.returnDate ? dayjs(item.returnDate).format('YYYY-MM-DD') : expenseForm.returnDate;
+                      const hasDatesAndRate = Boolean(itemPerDay && item?.acquiredDate && item?.returnDate);
+                      const days = calcRentalDays(itemAcq, itemRet);
+                      const autoAmt = (expenseForm.useRentalCalc || hasDatesAndRate) && Number(itemPerDay) > 0
+                        ? (Number(itemQty) * Number(itemPerDay) * days).toFixed(2)
+                        : expenseForm.amount;
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedItemId: val,
+                        isNewMaterial: false,
+                        materialName: item?.itemName || '',
+                        materialUnit: item?.unit || 'Units',
+                        materialQuantity: itemQty,
+                        perDayRental: itemPerDay,
+                        acquiredDate: itemAcq,
+                        returnDate: itemRet,
+                        useRentalCalc: expenseForm.useRentalCalc || hasDatesAndRate,
+                        amount: autoAmt,
+                        description: expenseForm.description || (item?.itemName ? `Rental paid for ${item.itemName}` : '')
+                      });
+                    }
+                  }}
+                >
+                  <option value="">— Select material / tool from inventory —</option>
+                  {(materials?.items || []).map(item => (
+                    <option key={item._id} value={item._id}>
+                      {item.isRental ? '[RENTAL] ' : ''}{item.itemName} (Stock: {item.balance ?? 0} {item.unit || ''}{item.perDayRental > 0 ? ` • ₹${item.perDayRental}/day` : ''})
+                    </option>
+                  ))}
+                  <option value="__new__">+ Register New Rental Material / Tool</option>
+                </select>
+              </div>
+
+              {expenseForm.isNewMaterial && (
+                <div className="responsive-grid-2col" style={{ gap: '8px' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px', color: '#4C1D95' }}>New Rental Item Name *</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. Drilling Machine / Scaffolding"
+                      value={expenseForm.materialName}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, materialName: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px', color: '#4C1D95' }}>Unit & Quantity</label>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        className="input"
+                        placeholder="Qty"
+                        value={expenseForm.materialQuantity}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, materialQuantity: e.target.value })}
+                      />
+                      <select
+                        className="input"
+                        value={expenseForm.materialUnit || 'Units'}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, materialUnit: e.target.value })}
+                      >
+                        <option value="Units">Units / Nos</option>
+                        <option value="Pieces">Pieces</option>
+                        <option value="Bags">Bags</option>
+                        <option value="Sq.Ft">Sq.Ft</option>
+                        <option value="Meters">Meters</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Optional Per-Day Rental Calculation Toggle */}
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: '#5B21B6',
+                backgroundColor: '#EDE9FE',
+                border: '1px solid #C4B5FD',
+                padding: '8px 10px',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(expenseForm.useRentalCalc)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const days = calcRentalDays(expenseForm.acquiredDate, expenseForm.returnDate);
+                      const qty = Number(expenseForm.materialQuantity) || 1;
+                      const rate = Number(expenseForm.perDayRental) || 0;
+                      const nextAmt = checked && rate > 0 ? (qty * rate * days).toFixed(2) : expenseForm.amount;
+                      setExpenseForm({ ...expenseForm, useRentalCalc: checked, amount: nextAmt });
+                    }}
+                  />
+                  <span>Calculate by Per-Day Rate & Acquired/Return Dates (Optional)</span>
+                </div>
+                <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', backgroundColor: expenseForm.useRentalCalc ? '#C4B5FD' : '#E2E8F0', color: expenseForm.useRentalCalc ? '#4C1D95' : '#475569' }}>
+                  {expenseForm.useRentalCalc ? 'Auto-Calculated' : 'Flat Amount (Opted Out)'}
+                </span>
+              </label>
+
+              {expenseForm.useRentalCalc && (
+                <div className="responsive-grid-3col" style={{ gap: '8px' }}>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '11px', color: '#5B21B6' }}>Per Day Rate (₹/day)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="input"
+                      placeholder="e.g. 300"
+                      value={expenseForm.perDayRental}
+                      onChange={(e) => {
+                        const rate = e.target.value;
+                        const days = calcRentalDays(expenseForm.acquiredDate, expenseForm.returnDate);
+                        const qty = Number(expenseForm.materialQuantity) || 1;
+                        const amt = rate ? (qty * Number(rate) * days).toFixed(2) : expenseForm.amount;
+                        setExpenseForm({ ...expenseForm, perDayRental: rate, amount: amt });
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '11px', color: '#5B21B6' }}>Acquired Date</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={expenseForm.acquiredDate}
+                      onChange={(e) => {
+                        const acq = e.target.value;
+                        const days = calcRentalDays(acq, expenseForm.returnDate);
+                        const qty = Number(expenseForm.materialQuantity) || 1;
+                        const rate = Number(expenseForm.perDayRental) || 0;
+                        const amt = rate > 0 ? (qty * rate * days).toFixed(2) : expenseForm.amount;
+                        setExpenseForm({ ...expenseForm, acquiredDate: acq, amount: amt });
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '11px', color: '#5B21B6' }}>Return Date</label>
+                    <input
+                      type="date"
+                      className="input"
+                      value={expenseForm.returnDate}
+                      onChange={(e) => {
+                        const ret = e.target.value;
+                        const days = calcRentalDays(expenseForm.acquiredDate, ret);
+                        const qty = Number(expenseForm.materialQuantity) || 1;
+                        const rate = Number(expenseForm.perDayRental) || 0;
+                        const amt = rate > 0 ? (qty * rate * days).toFixed(2) : expenseForm.amount;
+                        setExpenseForm({ ...expenseForm, returnDate: ret, amount: amt });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {expenseForm.category === 'material' && (
             <label style={{
@@ -4821,10 +5285,23 @@ export default function ProjectDetail() {
             <select
               className="input"
               value={materialForm.source || 'site_stock'}
-              onChange={(e) => setMaterialForm({ ...materialForm, source: e.target.value })}
+              onChange={(e) => {
+                const src = e.target.value;
+                const isRent = src === 'rental';
+                const days = isRent ? calcRentalDays(materialForm.acquiredDate, materialForm.returnDate) : 1;
+                const qty = Number(materialForm.quantity) || 0;
+                const rate = Number(isRent ? (materialForm.perDayRental || materialForm.unitCost) : materialForm.unitCost) || 0;
+                const total = qty > 0 && rate > 0 ? (qty * rate * days).toFixed(2) : materialForm.totalValue;
+                setMaterialForm({
+                  ...materialForm,
+                  source: src,
+                  totalValue: total
+                });
+              }}
             >
               <option value="site_stock">Site Stock / General Site Entry</option>
               <option value="direct_purchase">Direct Purchase (Direct invoice — No Petty Cash deduction)</option>
+              <option value="rental">Rental (Per-Day Tool / Material Rental)</option>
             </select>
           </div>
 
@@ -4899,8 +5376,10 @@ export default function ProjectDetail() {
                 value={materialForm.quantity}
                 onChange={(e) => {
                   const qty = e.target.value;
-                  const unitCost = materialForm.unitCost;
-                  const total = qty && unitCost ? (Number(qty) * Number(unitCost)).toFixed(2) : materialForm.totalValue;
+                  const isRent = materialForm.source === 'rental';
+                  const days = isRent ? calcRentalDays(materialForm.acquiredDate, materialForm.returnDate) : 1;
+                  const rate = isRent ? (materialForm.perDayRental || materialForm.unitCost) : materialForm.unitCost;
+                  const total = qty && rate ? (Number(qty) * Number(rate) * days).toFixed(2) : materialForm.totalValue;
                   setMaterialForm({ ...materialForm, quantity: qty, totalValue: total });
                 }}
                 required
@@ -4930,27 +5409,140 @@ export default function ProjectDetail() {
             </div>
           </div>
 
+          {materialForm.source === 'rental' && (
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#5B21B6',
+              backgroundColor: '#F5F3FF',
+              border: '1px solid #DDD6FE',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              cursor: 'pointer'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(materialForm.useRentalCalc)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    const days = calcRentalDays(materialForm.acquiredDate, materialForm.returnDate);
+                    const qty = Number(materialForm.quantity) || 1;
+                    const rate = Number(materialForm.perDayRental || materialForm.unitCost) || 0;
+                    const total = checked && rate > 0 ? (qty * rate * days).toFixed(2) : materialForm.totalValue;
+                    setMaterialForm({ ...materialForm, useRentalCalc: checked, totalValue: total });
+                  }}
+                />
+                <span>Calculate Rental by Per-Day Rate & Acquired/Return Dates (Optional)</span>
+              </div>
+              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', backgroundColor: materialForm.useRentalCalc ? '#DDD6FE' : '#E2E8F0', color: materialForm.useRentalCalc ? '#5B21B6' : '#64748B' }}>
+                {materialForm.useRentalCalc ? 'Auto Per-Day Calc' : 'Opted Out / Manual'}
+              </span>
+            </label>
+          )}
+
+          {materialForm.source === 'rental' && materialForm.useRentalCalc && (
+            <div style={{ backgroundColor: '#F5F3FF', padding: '12px', borderRadius: '6px', border: '1px solid #DDD6FE', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="responsive-grid-3col" style={{ gap: '10px' }}>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Per Day Rental (₹/day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="input"
+                    placeholder="e.g. 400"
+                    value={materialForm.perDayRental || materialForm.unitCost}
+                    onChange={(e) => {
+                      const perDay = e.target.value;
+                      const days = calcRentalDays(materialForm.acquiredDate, materialForm.returnDate);
+                      const qty = Number(materialForm.quantity) || 1;
+                      const total = perDay ? (qty * Number(perDay) * days).toFixed(2) : materialForm.totalValue;
+                      setMaterialForm({
+                        ...materialForm,
+                        perDayRental: perDay,
+                        unitCost: perDay,
+                        totalValue: total
+                      });
+                    }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Acquired Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={materialForm.acquiredDate}
+                    onChange={(e) => {
+                      const acq = e.target.value;
+                      const days = calcRentalDays(acq, materialForm.returnDate);
+                      const qty = Number(materialForm.quantity) || 1;
+                      const rate = Number(materialForm.perDayRental || materialForm.unitCost) || 0;
+                      const total = rate > 0 ? (qty * rate * days).toFixed(2) : materialForm.totalValue;
+                      setMaterialForm({ ...materialForm, acquiredDate: acq, date: acq, totalValue: total });
+                    }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontWeight: 600, fontSize: '12px', color: '#5B21B6' }}>Return Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={materialForm.returnDate}
+                    onChange={(e) => {
+                      const ret = e.target.value;
+                      const days = calcRentalDays(materialForm.acquiredDate, ret);
+                      const qty = Number(materialForm.quantity) || 1;
+                      const rate = Number(materialForm.perDayRental || materialForm.unitCost) || 0;
+                      const total = rate > 0 ? (qty * rate * days).toFixed(2) : materialForm.totalValue;
+                      setMaterialForm({ ...materialForm, returnDate: ret, totalValue: total });
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#5B21B6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#EDE9FE', padding: '6px 10px', borderRadius: '4px' }}>
+                <span>
+                  Rental Duration: <strong>{calcRentalDays(materialForm.acquiredDate, materialForm.returnDate)} day(s)</strong>
+                  {materialForm.quantity ? ` × Qty ${materialForm.quantity}` : ' × Qty 1'}
+                  {(materialForm.perDayRental || materialForm.unitCost) ? ` × ₹${materialForm.perDayRental || materialForm.unitCost}/day` : ''}
+                </span>
+                <strong>Auto Rental Total: ₹{Number(materialForm.totalValue || 0).toLocaleString('en-IN')}</strong>
+              </div>
+            </div>
+          )}
+
           <div className="responsive-grid-2col" style={{ gap: '12px' }}>
             <div className="form-group">
-              <label>Unit Cost (₹)</label>
+              <label>{materialForm.source === 'rental' ? 'Per Day Cost (₹/day)' : 'Unit Cost (₹)'}</label>
               <input
                 type="number"
                 min="0"
                 step="any"
                 className="input"
                 placeholder="e.g. 400"
-                value={materialForm.unitCost}
+                value={materialForm.source === 'rental' ? (materialForm.perDayRental || materialForm.unitCost) : materialForm.unitCost}
                 onChange={(e) => {
                   const cost = e.target.value;
+                  const isRent = materialForm.source === 'rental';
+                  const days = isRent ? calcRentalDays(materialForm.acquiredDate, materialForm.returnDate) : 1;
                   const qty = materialForm.quantity;
-                  const total = qty && cost ? (Number(qty) * Number(cost)).toFixed(2) : materialForm.totalValue;
-                  setMaterialForm({ ...materialForm, unitCost: cost, totalValue: total });
+                  const total = qty && cost ? (Number(qty) * Number(cost) * days).toFixed(2) : materialForm.totalValue;
+                  setMaterialForm({
+                    ...materialForm,
+                    unitCost: cost,
+                    ...(isRent ? { perDayRental: cost } : {}),
+                    totalValue: total
+                  });
                 }}
               />
             </div>
 
             <div className="form-group">
-              <label>Total Value (₹)</label>
+              <label>{materialForm.source === 'rental' ? 'Total Rental Value (₹)' : 'Total Value (₹)'}</label>
               <input
                 type="number"
                 min="0"
