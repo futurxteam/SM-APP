@@ -6,6 +6,7 @@ import Button from '../ui/Button';
 import TrackingMap from './TrackingMap';
 import ProjectCoordinateModal from './ProjectCoordinateModal';
 import ExportReportModal from '../common/ExportReportModal';
+import GeoAttendanceSettingsModal from '../projects/GeoAttendanceSettingsModal';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
 import {
@@ -23,6 +24,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
   const [isLoading, setIsLoading] = useState(true);
   const [isCoordModalOpen, setIsCoordModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isGeoModalOpen, setIsGeoModalOpen] = useState(false);
 
   useEffect(() => {
     loadLocationLogs();
@@ -108,14 +110,29 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginLeft: 'auto' }}>
               {canManageCoords && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon={Settings}
-                  onClick={() => setIsCoordModalOpen(true)}
-                >
-                  {siteCoordinates?.latitude ? 'Edit Coordinates' : 'Set Coordinates'}
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Settings}
+                    onClick={() => setIsGeoModalOpen(true)}
+                    style={{
+                      color: project?.geoAttendance?.enabled === false ? '#DC2626' : undefined,
+                      borderColor: project?.geoAttendance?.enabled === false ? '#FECACA' : undefined,
+                      backgroundColor: project?.geoAttendance?.enabled === false ? '#FEF2F2' : undefined,
+                    }}
+                  >
+                    {project?.geoAttendance?.enabled === false ? 'Geo-Attendance: Paused' : 'Geo Settings'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={MapPin}
+                    onClick={() => setIsCoordModalOpen(true)}
+                  >
+                    {siteCoordinates?.latitude ? 'Edit Coordinates' : 'Set Coordinates'}
+                  </Button>
+                </>
               )}
 
               <Button
@@ -130,6 +147,40 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
           </div>
         </div>
       </Card>
+
+      {/* Geo-Attendance Paused Banner */}
+      {project?.geoAttendance?.enabled === false && (
+        <div style={{
+          backgroundColor: '#FFFBEB',
+          border: '1px solid #FCD34D',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          color: '#92400E'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <AlertTriangle size={20} color="#D97706" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '13px' }}>Supervisor Geo-Attendance is paused for this project</div>
+              <div style={{ fontSize: '12px', marginTop: '2px' }}>Checkpoints (9 AM, 12 PM, 3 PM, 6 PM) are not currently required or enforced for supervisors.</div>
+            </div>
+          </div>
+          {canManageCoords && (
+            <button
+              type="button"
+              onClick={() => setIsGeoModalOpen(true)}
+              className="btn btn-sm"
+              style={{ backgroundColor: '#D97706', color: '#FFF', fontSize: '12px', padding: '4px 12px', flexShrink: 0 }}
+            >
+              Resume / Configure
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Site Geofence Summary & KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '12px' }}>
@@ -765,6 +816,19 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
         projectCode={project?.code}
         defaultSupervisorId={supervisor?._id || 'all'}
       />
+
+      {/* Supervisor Geo Attendance Settings Modal */}
+      {project && (
+        <GeoAttendanceSettingsModal
+          isOpen={isGeoModalOpen}
+          onClose={() => setIsGeoModalOpen(false)}
+          project={project}
+          onProjectUpdated={() => {
+            loadLocationLogs();
+            if (onProjectUpdated) onProjectUpdated();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
   Wallet, Layers, CheckSquare, Flag, ArrowLeft, Download,
   Plus, AlertCircle, CheckCircle, Clock, Upload, Trash2, Edit3, MapPin,
   Search, Check, Filter, X, CheckCircle2, PlayCircle, PauseCircle, AlertTriangle, FileText, ExternalLink, Image,
-  ShieldCheck, ShieldAlert, Crosshair, RefreshCw, Navigation, FileSpreadsheet
+  ShieldCheck, ShieldAlert, Crosshair, RefreshCw, Navigation, FileSpreadsheet, Settings
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
@@ -21,6 +21,7 @@ import ScheduleTab from '../../components/projects/ScheduleTab';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 import ExportReportModal from '../../components/common/ExportReportModal';
 import SeedDataModal from '../../components/projects/SeedDataModal';
+import GeoAttendanceSettingsModal from '../../components/projects/GeoAttendanceSettingsModal';
 
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
@@ -185,6 +186,7 @@ export default function ProjectDetail() {
 
   // Edit Project Details State (Admin / Project Manager)
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
+  const [isGeoSettingsModalOpen, setIsGeoSettingsModalOpen] = useState(false);
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [assignableStaff, setAssignableStaff] = useState({ projectManagers: [], siteSupervisors: [] });
   const [editProjectForm, setEditProjectForm] = useState({
@@ -1389,6 +1391,34 @@ export default function ProjectDetail() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setIsGeoSettingsModalOpen(true)}
+                  className="btn btn-outline btn-sm"
+                  style={{
+                    color: project.geoAttendance?.enabled === false ? '#DC2626' : 'var(--color-brand)',
+                    borderColor: project.geoAttendance?.enabled === false ? '#FECACA' : '#CBD5E1',
+                    backgroundColor: project.geoAttendance?.enabled === false ? '#FEF2F2' : '#FFFFFF',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                  title="Configure supervisor geo-attendance settings"
+                >
+                  <Settings size={14} />
+                  <span>Settings</span>
+                  {project.geoAttendance?.enabled === false ? (
+                    <span style={{ fontSize: '10px', backgroundColor: '#FEE2E2', color: '#DC2626', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                      OFF
+                    </span>
+                  ) : (
+                    (project.geoAttendance?.disabledSupervisors?.length > 0) && (
+                      <span style={{ fontSize: '10px', backgroundColor: '#FEF3C7', color: '#B45309', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                        {project.geoAttendance.disabledSupervisors.length} Exempt
+                      </span>
+                    )
+                  )}
+                </button>
+                <button
+                  type="button"
                   onClick={handleExportSeedData}
                   disabled={isExportingSeedData}
                   className="btn btn-outline btn-sm"
@@ -1479,7 +1509,7 @@ export default function ProjectDetail() {
             </button>
           )}
           <button className={`tab-btn ${activeTab === 'attendance' ? 'active' : ''}`} onClick={() => setActiveTab('attendance')}>Attendance</button>
-          <button className={`tab-btn ${activeTab === 'purchases' ? 'active' : ''}`} onClick={() => setActiveTab('purchases')}>Direct Purchases</button>
+          <button className={`tab-btn ${activeTab === 'purchases' ? 'active' : ''}`} onClick={() => setActiveTab('purchases')}>Direct Expenses</button>
           <button className={`tab-btn ${activeTab === 'pettycash' ? 'active' : ''}`} onClick={() => setActiveTab('pettycash')}>Petty Cash</button>
           <button className={`tab-btn ${activeTab === 'materials' ? 'active' : ''}`} onClick={() => setActiveTab('materials')}>Materials List</button>
           <button className={`tab-btn ${activeTab === 'execution' ? 'active' : ''}`} onClick={() => setActiveTab('execution')}>Site Execution</button>
@@ -1536,7 +1566,7 @@ export default function ProjectDetail() {
             </Card>
 
             <Card className="kpi-compact-card">
-              <div className="text-muted" style={{ fontSize: '12px' }}>Total Direct Purchases</div>
+              <div className="text-muted" style={{ fontSize: '12px' }}>Total Direct Expenses</div>
               <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1D4ED8' }}>
                 ₹{(financials?.companyPurchasesTotal || 0).toLocaleString('en-IN')}
               </div>
@@ -1590,6 +1620,23 @@ export default function ProjectDetail() {
                     onClick={() => setActiveTab('location')}
                   >
                     <MapPin size={14} /> Location & Tracking
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setIsGeoSettingsModalOpen(true)}
+                    style={{
+                      color: project.geoAttendance?.enabled === false ? '#DC2626' : 'var(--color-brand)',
+                      borderColor: project.geoAttendance?.enabled === false ? '#FECACA' : '#CBD5E1',
+                      backgroundColor: project.geoAttendance?.enabled === false ? '#FEF2F2' : '#FFFFFF',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                    title="Configure supervisor geo-attendance settings"
+                  >
+                    <Settings size={14} />
+                    <span>Geo Attendance</span>
                   </button>
                 </div>
               )}
@@ -2545,7 +2592,7 @@ export default function ProjectDetail() {
             return (
               <div className="kpi-grid-4">
                 <Card className="kpi-compact-card">
-                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Direct Purchases</div>
+                  <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Total Direct Expenses</div>
                   <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#1E293B' }}>
                     ₹{totalDirectPurchases.toLocaleString('en-IN')}
                   </div>
@@ -2589,9 +2636,9 @@ export default function ProjectDetail() {
           }}>
             <ShieldCheck size={20} color="#16A34A" style={{ flexShrink: 0 }} />
             <div>
-              <strong>Direct Company Purchases</strong> are processed and settled directly via corporate invoices. 
-              These purchases <strong>do not affect or deduct from the Site Supervisor's Petty Cash balance</strong>. 
-              Material purchases are automatically tracked in the <strong>Materials List</strong> with a <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px' }}>DIRECT PURCHASE</span> label.
+              <strong>Direct Company Purchases</strong> are processed and settled directly via corporate invoices.
+              These purchases <strong>do not affect or deduct from the Site Supervisor's Petty Cash balance</strong>.
+              Material purchases are automatically tracked in the <strong>Materials List</strong> with a <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px' }}>DIRECT EXPENSES</span> label.
             </div>
           </div>
 
@@ -2613,7 +2660,7 @@ export default function ProjectDetail() {
                   <Download size={14} /> Export Report
                 </button>
                 {(isSuperAdmin() || isAccounts()) && (
-                  <Button icon={Plus} onClick={() => { if (workersList.length === 0) loadProjectWorkers(); setIsPurchaseModalOpen(true); }}>Add Direct Purchase</Button>
+                  <Button icon={Plus} onClick={() => { if (workersList.length === 0) loadProjectWorkers(); setIsPurchaseModalOpen(true); }}>Add Direct Expense</Button>
                 )}
               </div>
             </div>
@@ -3429,7 +3476,7 @@ export default function ProjectDetail() {
                   </Card>
 
                   <Card className="kpi-compact-card">
-                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Direct Purchase Stock</div>
+                    <div className="text-muted" style={{ fontSize: '12px', fontWeight: 600 }}>Direct Expenses Stock</div>
                     <div className="kpi-val" style={{ fontSize: '20px', fontWeight: 700, marginTop: '4px', color: '#4338CA' }}>
                       ₹{directPurchaseVal.toLocaleString('en-IN')}
                     </div>
@@ -3475,7 +3522,7 @@ export default function ProjectDetail() {
             }}>
               <Layers size={20} color="#2563EB" style={{ flexShrink: 0 }} />
               <div>
-                <strong>Material Inventory & Source Tracking:</strong> Items labeled <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>DIRECT PURCHASE</span> are procured via direct company supplier invoices and <strong>do not affect or deduct from the site's petty cash ledger</strong>.
+                <strong>Material Inventory & Source Tracking:</strong> Items labeled <span style={{ fontWeight: 700, backgroundColor: '#E0E7FF', color: '#3730A3', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>DIRECT EXPENSES </span> are procured via direct company supplier invoices and <strong>do not affect or deduct from the site's petty cash ledger</strong>.
               </div>
             </div>
 
@@ -3496,37 +3543,37 @@ export default function ProjectDetail() {
                   >
                     <Download size={14} /> Export Report
                   </button>
-{isSiteSupervisor() ? (
-  <Button
-    icon={Plus}
-    onClick={() => {
-      setExpenseForm({
-        category: 'material',
-        customCategoryName: '',
-        description: '',
-        amount: '',
-        isMaterialPurchase: true,
-        selectedItemId: '',
-        isNewMaterial: false,
-        materialName: '',
-        materialUnit: 'Bags',
-        materialQuantity: '',
-        materialUnitCost: ''
-      });
-      setExpenseFile(null);
-      setIsExpenseModalOpen(true);
-    }}
-  >
-    Material Need – Petty Cash
-  </Button>
-) : (
-  <Button
-    icon={Plus}
-    onClick={() => setIsMaterialModalOpen(true)}
-  >
-    Add Material Item
-  </Button>
-)}                </div>
+                  {isSiteSupervisor() ? (
+                    <Button
+                      icon={Plus}
+                      onClick={() => {
+                        setExpenseForm({
+                          category: 'material',
+                          customCategoryName: '',
+                          description: '',
+                          amount: '',
+                          isMaterialPurchase: true,
+                          selectedItemId: '',
+                          isNewMaterial: false,
+                          materialName: '',
+                          materialUnit: 'Bags',
+                          materialQuantity: '',
+                          materialUnitCost: ''
+                        });
+                        setExpenseFile(null);
+                        setIsExpenseModalOpen(true);
+                      }}
+                    >
+                      Material Need – Petty Cash
+                    </Button>
+                  ) : (
+                    <Button
+                      icon={Plus}
+                      onClick={() => setIsMaterialModalOpen(true)}
+                    >
+                      Add Material Item
+                    </Button>
+                  )}                </div>
               </div>
 
               {/* Desktop Table View */}
@@ -4865,10 +4912,10 @@ export default function ProjectDetail() {
                   {purchaseForm.materialName?.trim() && (materials?.items || []).some(
                     i => i.itemName.toLowerCase() === purchaseForm.materialName.trim().toLowerCase()
                   ) && (
-                    <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
-                      ⚠️ <strong>"{purchaseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
-                    </div>
-                  )}
+                      <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                        ⚠️ <strong>"{purchaseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -5487,10 +5534,10 @@ export default function ProjectDetail() {
                   {expenseForm.materialName?.trim() && (materials?.items || []).some(
                     i => i.itemName.toLowerCase() === expenseForm.materialName.trim().toLowerCase()
                   ) && (
-                    <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
-                      ⚠️ <strong>"{expenseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
-                    </div>
-                  )}
+                      <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                        ⚠️ <strong>"{expenseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -5730,10 +5777,10 @@ export default function ProjectDetail() {
               {materialForm.itemName?.trim() && (materials?.items || []).some(
                 i => i.itemName.toLowerCase() === materialForm.itemName.trim().toLowerCase()
               ) && (
-                <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
-                  ⚠️ <strong>"{materialForm.itemName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
-                </div>
-              )}
+                  <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                    ⚠️ <strong>"{materialForm.itemName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                  </div>
+                )}
             </div>
           )}
 
@@ -6403,6 +6450,18 @@ export default function ProjectDetail() {
             loadPettyCash();
             loadMaterials();
             loadPurchases();
+          }}
+        />
+      )}
+
+      {/* Supervisor Geo-Attendance Settings Modal */}
+      {project && (
+        <GeoAttendanceSettingsModal
+          isOpen={isGeoSettingsModalOpen}
+          onClose={() => setIsGeoSettingsModalOpen(false)}
+          project={project}
+          onProjectUpdated={(updatedProject) => {
+            setProject(updatedProject);
           }}
         />
       )}
