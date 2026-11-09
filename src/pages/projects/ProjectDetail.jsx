@@ -78,7 +78,15 @@ export default function ProjectDetail() {
     materialName: '',
     materialUnit: 'Bags',
     materialQuantity: '',
-    materialUnitCost: ''
+    materialUnitCost: '',
+    selectedWorkerId: '',
+    isNewWorker: false,
+    newWorkerName: '',
+    newWorkerPhone: '',
+    newWorkerSkill: 'General',
+    newWorkerType: 'contractor',
+    newWorkerDailyRate: '',
+    newWorkerVendorName: ''
   });
   const [purchaseFile, setPurchaseFile] = useState(null);
 
@@ -108,7 +116,15 @@ export default function ProjectDetail() {
     materialName: '',
     materialUnit: 'Bags',
     materialQuantity: '',
-    materialUnitCost: ''
+    materialUnitCost: '',
+    selectedWorkerId: '',
+    isNewWorker: false,
+    newWorkerName: '',
+    newWorkerPhone: '',
+    newWorkerSkill: 'General',
+    newWorkerType: 'contractor',
+    newWorkerDailyRate: '',
+    newWorkerVendorName: ''
   });
   const [expenseFile, setExpenseFile] = useState(null);
 
@@ -424,6 +440,15 @@ export default function ProjectDetail() {
     }
   };
 
+  const loadProjectWorkers = async () => {
+    try {
+      const workRes = await api.get(`/workers?projectId=${projectId}`);
+      setWorkersList(workRes.data.data || []);
+    } catch (err) {
+      console.error('Failed to load project workers', err);
+    }
+  };
+
   // Load modules on tab switch
   useEffect(() => {
     if (activeTab === 'attendance') {
@@ -432,10 +457,12 @@ export default function ProjectDetail() {
     if (activeTab === 'purchases') {
       loadPurchases();
       if (!materials) loadMaterials();
+      if (workersList.length === 0) loadProjectWorkers();
     }
     if (activeTab === 'pettycash') {
       loadPettyCash();
       if (!materials) loadMaterials();
+      if (workersList.length === 0) loadProjectWorkers();
     }
     if (activeTab === 'materials') loadMaterials();
     if (activeTab === 'execution') loadExecution();
@@ -661,14 +688,30 @@ export default function ProjectDetail() {
       return;
     }
     const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental');
+    const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+    if (purchaseForm.isNewWorker && !purchaseForm.newWorkerName?.trim()) {
+      alert('Please enter the new Worker / Contractor Name (or select an existing worker).');
+      return;
+    }
     const useCalc = isRent && Boolean(purchaseForm.useRentalCalc);
     const formData = new FormData();
     formData.append('category', purchaseForm.category);
-    formData.append('purchaseType', isRent ? 'rental' : 'direct_expense');
+    formData.append('purchaseType', isRent ? 'rental' : (isLabourPurchase ? 'contract_labour' : 'direct_expense'));
     formData.append('description', purchaseForm.description);
     formData.append('amount', purchaseForm.amount);
     formData.append('isMaterialPurchase', purchaseForm.isMaterialPurchase);
     formData.append('isRental', isRent ? 'true' : 'false');
+    if (purchaseForm.selectedWorkerId) {
+      formData.append('selectedWorkerId', purchaseForm.selectedWorkerId);
+    } else if (purchaseForm.isNewWorker && purchaseForm.newWorkerName?.trim()) {
+      formData.append('isNewWorker', 'true');
+      formData.append('newWorkerName', purchaseForm.newWorkerName.trim());
+      if (purchaseForm.newWorkerPhone) formData.append('newWorkerPhone', purchaseForm.newWorkerPhone.trim());
+      if (purchaseForm.newWorkerSkill) formData.append('newWorkerSkill', purchaseForm.newWorkerSkill.trim());
+      if (purchaseForm.newWorkerType) formData.append('newWorkerType', purchaseForm.newWorkerType);
+      if (purchaseForm.newWorkerDailyRate !== '') formData.append('newWorkerDailyRate', purchaseForm.newWorkerDailyRate);
+      if (purchaseForm.newWorkerVendorName) formData.append('newWorkerVendorName', purchaseForm.newWorkerVendorName.trim());
+    }
     if (useCalc) {
       if (purchaseForm.perDayRental) formData.append('perDayRental', purchaseForm.perDayRental);
       if (purchaseForm.acquiredDate) formData.append('acquiredDate', purchaseForm.acquiredDate);
@@ -691,6 +734,7 @@ export default function ProjectDetail() {
     try {
       setIsSubmittingPurchase(true);
       await api.post(`/projects/${projectId}/purchases`, formData);
+      const createdNewWorker = Boolean(purchaseForm.isNewWorker && purchaseForm.newWorkerName?.trim());
       setIsPurchaseModalOpen(false);
       setPurchaseForm({
         category: 'Material',
@@ -707,12 +751,21 @@ export default function ProjectDetail() {
         materialName: '',
         materialUnit: 'Bags',
         materialQuantity: '',
-        materialUnitCost: ''
+        materialUnitCost: '',
+        selectedWorkerId: '',
+        isNewWorker: false,
+        newWorkerName: '',
+        newWorkerPhone: '',
+        newWorkerSkill: 'General',
+        newWorkerType: 'contractor',
+        newWorkerDailyRate: '',
+        newWorkerVendorName: ''
       });
       setPurchaseFile(null);
       loadPurchases();
       loadMaterials();
       loadProjectData();
+      if (createdNewWorker) loadProjectWorkers();
       alert('Direct company purchase recorded successfully! Material inventory updated without affecting petty cash.');
     } catch (err) {
       console.error('Failed to add direct purchase:', err.response?.data || err);
@@ -795,6 +848,10 @@ export default function ProjectDetail() {
       alert('Please select the rented material/tool from site inventory (or choose "+ Register New Rental Item").');
       return;
     }
+    if (expenseForm.category === 'labour' && expenseForm.isNewWorker && !expenseForm.newWorkerName?.trim()) {
+      alert('Please enter the new Worker / Contractor Name (or select an existing worker).');
+      return;
+    }
 
     const formData = new FormData();
     formData.append('category', expenseForm.category);
@@ -804,6 +861,19 @@ export default function ProjectDetail() {
     formData.append('receiptImage', expenseFile);
     formData.append('isMaterialPurchase', isMat ? 'true' : 'false');
     formData.append('isRentalPayment', isRentalPaid ? 'true' : 'false');
+    if (expenseForm.category === 'labour') {
+      if (expenseForm.selectedWorkerId) {
+        formData.append('selectedWorkerId', expenseForm.selectedWorkerId);
+      } else if (expenseForm.isNewWorker && expenseForm.newWorkerName?.trim()) {
+        formData.append('isNewWorker', 'true');
+        formData.append('newWorkerName', expenseForm.newWorkerName.trim());
+        if (expenseForm.newWorkerPhone) formData.append('newWorkerPhone', expenseForm.newWorkerPhone.trim());
+        if (expenseForm.newWorkerSkill) formData.append('newWorkerSkill', expenseForm.newWorkerSkill.trim());
+        if (expenseForm.newWorkerType) formData.append('newWorkerType', expenseForm.newWorkerType);
+        if (expenseForm.newWorkerDailyRate !== '') formData.append('newWorkerDailyRate', expenseForm.newWorkerDailyRate);
+        if (expenseForm.newWorkerVendorName) formData.append('newWorkerVendorName', expenseForm.newWorkerVendorName.trim());
+      }
+    }
     if (isMat || isRentalPaid) {
       if (expenseForm.selectedItemId) {
         formData.append('selectedItemId', expenseForm.selectedItemId);
@@ -828,6 +898,7 @@ export default function ProjectDetail() {
     try {
       setIsSubmittingExpense(true);
       await api.post(`/projects/${projectId}/pettycash/expenses`, formData);
+      const createdNewWorker = Boolean(expenseForm.category === 'labour' && expenseForm.isNewWorker && expenseForm.newWorkerName?.trim());
       setIsExpenseModalOpen(false);
       setExpenseForm({
         category: 'fuel',
@@ -844,11 +915,20 @@ export default function ProjectDetail() {
         materialName: '',
         materialUnit: 'Bags',
         materialQuantity: '',
-        materialUnitCost: ''
+        materialUnitCost: '',
+        selectedWorkerId: '',
+        isNewWorker: false,
+        newWorkerName: '',
+        newWorkerPhone: '',
+        newWorkerSkill: 'General',
+        newWorkerType: 'contractor',
+        newWorkerDailyRate: '',
+        newWorkerVendorName: ''
       });
       setExpenseFile(null);
       loadPettyCash();
       loadProjectData();
+      if (createdNewWorker) loadProjectWorkers();
       if (isMat || isRentalPaid) {
         loadMaterials();
         loadProjectData();
@@ -2533,7 +2613,7 @@ export default function ProjectDetail() {
                   <Download size={14} /> Export Report
                 </button>
                 {(isSuperAdmin() || isAccounts()) && (
-                  <Button icon={Plus} onClick={() => setIsPurchaseModalOpen(true)}>Add Direct Purchase</Button>
+                  <Button icon={Plus} onClick={() => { if (workersList.length === 0) loadProjectWorkers(); setIsPurchaseModalOpen(true); }}>Add Direct Purchase</Button>
                 )}
               </div>
             </div>
@@ -2560,6 +2640,8 @@ export default function ProjectDetail() {
                     ) : (
                       purchases.map(p => {
                         const isMat = p.isMaterialPurchase || (p.category && p.category.toLowerCase().includes('material')) || p.materialName;
+                        const wName = p.workerName || p.linkedWorker?.name || '';
+                        const wSkill = p.workerSkill || p.linkedWorker?.skill || '';
                         return (
                           <tr key={p._id}>
                             <td>{dayjs(p.date).format('DD-MM-YYYY')}</td>
@@ -2576,6 +2658,11 @@ export default function ProjectDetail() {
                               >
                                 {p.category || (isMat ? 'Material' : 'Purchase')}
                               </span>
+                              {wName && (
+                                <div style={{ fontSize: '11px', color: '#0369A1', fontWeight: 600, marginTop: '4px' }}>
+                                  👷 {wName}{wSkill ? ` (${wSkill})` : ''}
+                                </div>
+                              )}
                             </td>
                             <td>
                               {p.materialName ? (
@@ -2773,7 +2860,7 @@ export default function ProjectDetail() {
                     <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Refill Petty Cash</Button>
                   )
                 )}
-                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); setIsExpenseModalOpen(true); }}>Add Expense</Button>
+                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); if (workersList.length === 0) loadProjectWorkers(); setIsExpenseModalOpen(true); }}>Add Expense</Button>
                 <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); setLedgerPage(1); }}>
                   <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
                 </select>
@@ -2819,6 +2906,12 @@ export default function ProjectDetail() {
                             {t.materialName && (t.isRentalPayment || t.category === 'tools_rental' || t.category === 'rental') && (
                               <div style={{ fontSize: '11px', color: '#6D28D9', fontWeight: 600, marginTop: '2px' }}>
                                 🏷️ {t.materialName}
+                              </div>
+                            )}
+                            {(t.workerName || t.linkedWorker?.name) && (
+                              <div style={{ fontSize: '11px', color: '#0369A1', fontWeight: 600, marginTop: '2px' }}>
+                                👷 {t.workerName || t.linkedWorker?.name}
+                                {(t.workerSkill || t.linkedWorker?.skill) ? ` (${t.workerSkill || t.linkedWorker?.skill})` : ''}
                               </div>
                             )}
                           </td>
@@ -4428,7 +4521,11 @@ export default function ProjectDetail() {
                 onChange={(e) => {
                   const cat = e.target.value;
                   const isRentCat = cat === 'Rental';
-                  const isMat = !['Tools & Machinery', 'Subcontractor & Services', 'Logistics & Transportation', 'Miscellaneous'].includes(cat);
+                  const isLabourCat = cat === 'Labour / Contractor Charges' || cat === 'Subcontractor & Services';
+                  if (isLabourCat && workersList.length === 0) {
+                    loadProjectWorkers();
+                  }
+                  const isMat = !['Tools & Machinery', 'Labour / Contractor Charges', 'Subcontractor & Services', 'Logistics & Transportation', 'Miscellaneous'].includes(cat);
                   const days = calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate);
                   const qty = Number(purchaseForm.materialQuantity) || 1;
                   const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
@@ -4439,13 +4536,15 @@ export default function ProjectDetail() {
                     isRental: isRentCat ? true : purchaseForm.isRental,
                     isMaterialPurchase: isMat,
                     amount: nextAmt,
-                    materialName: isMat && !purchaseForm.materialName ? cat : purchaseForm.materialName
+                    materialName: isMat && !purchaseForm.materialName ? cat : purchaseForm.materialName,
+                    ...(!isLabourCat ? { selectedWorkerId: '', isNewWorker: false, newWorkerName: '', newWorkerPhone: '', newWorkerSkill: 'General', newWorkerType: 'contractor', newWorkerDailyRate: '', newWorkerVendorName: '' } : {})
                   });
                 }}
                 required
               >
                 <option value="Material">Material (General)</option>
                 <option value="Rental">Rental (Tools / Equipment / Material Rental)</option>
+                <option value="Labour / Contractor Charges">Labour / Contractor Charges</option>
                 <option value="Cement">Cement & Aggregates</option>
                 <option value="Steel & Rebar">Steel & Rebar</option>
                 <option value="Sand & Aggregates">Sand & Aggregates</option>
@@ -4462,15 +4561,149 @@ export default function ProjectDetail() {
             </div>
 
             <div className="form-group">
-              <label>Vendor / Supplier Name</label>
+              <label>Vendor / Supplier / Description</label>
               <input
                 className="input"
-                placeholder="e.g. UltraTech Dealer / ABC Traders"
+                placeholder="e.g. UltraTech Dealer / Contractor Note"
                 value={purchaseForm.description}
                 onChange={(e) => setPurchaseForm({ ...purchaseForm, description: e.target.value })}
               />
             </div>
           </div>
+
+          {(purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services') && (
+            <div style={{
+              backgroundColor: '#F0F9FF',
+              border: '1px solid #BAE6FD',
+              borderRadius: '8px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369A1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>👷 Link to Project Worker / Contractor (Optional)</span>
+                <span style={{ fontSize: '11px', backgroundColor: '#E0F2FE', color: '#0284C7', padding: '2px 8px', borderRadius: '12px' }}>
+                  Aggregates in Labour Charge — Employee Total
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Select Worker / Contractor or Create New</label>
+                <select
+                  className="input"
+                  value={purchaseForm.selectedWorkerId || (purchaseForm.isNewWorker ? '__new_worker__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__new_worker__') {
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        selectedWorkerId: '',
+                        isNewWorker: true,
+                        newWorkerName: '',
+                        newWorkerPhone: '',
+                        newWorkerSkill: 'General',
+                        newWorkerType: 'contractor',
+                        newWorkerDailyRate: '',
+                        newWorkerVendorName: ''
+                      });
+                    } else if (val === '') {
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        selectedWorkerId: '',
+                        isNewWorker: false
+                      });
+                    } else {
+                      const w = (workersList || []).find(item => item._id === val);
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        selectedWorkerId: val,
+                        isNewWorker: false,
+                        description: purchaseForm.description || (w ? `Labour payment: ${w.name}${w.skill ? ` (${w.skill})` : ''}` : '')
+                      });
+                    }
+                  }}
+                >
+                  <option value="">— Optional: Select existing project worker / contractor —</option>
+                  {(workersList || []).map(w => (
+                    <option key={w._id} value={w._id}>
+                      {w.name} ({w.skill || 'General'} • {(w.workerType || 'daily_wage').replace('_', ' ')}{w.vendorName ? ` • ${w.vendorName}` : ''})
+                    </option>
+                  ))}
+                  <option value="__new_worker__">+ Create New Worker / Contractor & Link</option>
+                </select>
+              </div>
+
+              {purchaseForm.isNewWorker && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#FFFFFF', padding: '10px', borderRadius: '6px', border: '1px solid #BAE6FD' }}>
+                  <div className="responsive-grid-2col" style={{ gap: '8px' }}>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Worker / Contractor Name *</label>
+                      <input
+                        className="input"
+                        placeholder="e.g. Dinu and team / Sarfraz"
+                        value={purchaseForm.newWorkerName}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerName: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Skill / Trade *</label>
+                      <input
+                        className="input"
+                        placeholder="e.g. ELECTRICAL LABOUR / CARPENTERY / WELDING"
+                        value={purchaseForm.newWorkerSkill}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerSkill: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="responsive-grid-3col" style={{ gap: '8px' }}>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Worker Type</label>
+                      <select
+                        className="input"
+                        value={purchaseForm.newWorkerType}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerType: e.target.value })}
+                      >
+                        <option value="contractor">Contractor / Contract Team</option>
+                        <option value="daily_wage">Daily Wage Worker</option>
+                        <option value="vendor_supplied">Vendor Supplied</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Phone Number (Optional)</label>
+                      <input
+                        className="input"
+                        placeholder="10-digit phone"
+                        value={purchaseForm.newWorkerPhone}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerPhone: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Daily Rate (₹, 0 for Contract)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input"
+                        placeholder="0"
+                        value={purchaseForm.newWorkerDailyRate}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerDailyRate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Contractor / Duty Note (Optional)</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. Dinu and team, sarfraz-6duty, local team(contract)"
+                      value={purchaseForm.newWorkerVendorName}
+                      onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerVendorName: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {(purchaseForm.isRental || purchaseForm.category === 'Rental') && (
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#6D28D9', backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
@@ -4763,12 +4996,18 @@ export default function ProjectDetail() {
                 if ((cat === 'material' || cat === 'tools_rental') && !materials) {
                   loadMaterials();
                 }
+                if (cat === 'labour' && workersList.length === 0) {
+                  loadProjectWorkers();
+                }
                 setExpenseForm({
                   ...expenseForm,
                   category: cat,
                   isMaterialPurchase: cat === 'material' ? true : false,
                   ...((cat !== 'material' && cat !== 'tools_rental')
                     ? { selectedItemId: '', isNewMaterial: false, materialName: '', materialQuantity: '', materialUnitCost: '', useRentalCalc: false, perDayRental: '', returnDate: '' }
+                    : {}),
+                  ...(cat !== 'labour'
+                    ? { selectedWorkerId: '', isNewWorker: false, newWorkerName: '', newWorkerPhone: '', newWorkerSkill: 'General', newWorkerType: 'contractor', newWorkerDailyRate: '', newWorkerVendorName: '' }
                     : {})
                 });
               }}
@@ -4791,6 +5030,140 @@ export default function ProjectDetail() {
             <div className="form-group">
               <label>Custom Category Name *</label>
               <input className="input" value={expenseForm.customCategoryName} onChange={(e) => setExpenseForm({ ...expenseForm, customCategoryName: e.target.value })} required />
+            </div>
+          )}
+
+          {expenseForm.category === 'labour' && (
+            <div style={{
+              backgroundColor: '#F0F9FF',
+              border: '1px solid #BAE6FD',
+              borderRadius: '8px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369A1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>👷 Link to Project Worker / Contractor (Optional)</span>
+                <span style={{ fontSize: '11px', backgroundColor: '#E0F2FE', color: '#0284C7', padding: '2px 8px', borderRadius: '12px' }}>
+                  Aggregates in Labour Charge — Employee Total
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Select Worker / Contractor or Create New</label>
+                <select
+                  className="input"
+                  value={expenseForm.selectedWorkerId || (expenseForm.isNewWorker ? '__new_worker__' : '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '__new_worker__') {
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedWorkerId: '',
+                        isNewWorker: true,
+                        newWorkerName: '',
+                        newWorkerPhone: '',
+                        newWorkerSkill: 'General',
+                        newWorkerType: 'contractor',
+                        newWorkerDailyRate: '',
+                        newWorkerVendorName: ''
+                      });
+                    } else if (val === '') {
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedWorkerId: '',
+                        isNewWorker: false
+                      });
+                    } else {
+                      const w = (workersList || []).find(item => item._id === val);
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedWorkerId: val,
+                        isNewWorker: false,
+                        description: expenseForm.description || (w ? `Labour payment: ${w.name}${w.skill ? ` (${w.skill})` : ''}` : '')
+                      });
+                    }
+                  }}
+                >
+                  <option value="">— Optional: Select existing project worker / contractor —</option>
+                  {(workersList || []).map(w => (
+                    <option key={w._id} value={w._id}>
+                      {w.name} ({w.skill || 'General'} • {(w.workerType || 'daily_wage').replace('_', ' ')}{w.vendorName ? ` • ${w.vendorName}` : ''})
+                    </option>
+                  ))}
+                  <option value="__new_worker__">+ Create New Worker / Contractor & Link</option>
+                </select>
+              </div>
+
+              {expenseForm.isNewWorker && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#FFFFFF', padding: '10px', borderRadius: '6px', border: '1px solid #BAE6FD' }}>
+                  <div className="responsive-grid-2col" style={{ gap: '8px' }}>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Worker / Contractor Name *</label>
+                      <input
+                        className="input"
+                        placeholder="e.g. Dinu and team / Sarfraz"
+                        value={expenseForm.newWorkerName}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerName: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Skill / Trade *</label>
+                      <input
+                        className="input"
+                        placeholder="e.g. ELECTRICAL LABOUR / CARPENTERY / WELDING"
+                        value={expenseForm.newWorkerSkill}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerSkill: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="responsive-grid-3col" style={{ gap: '8px' }}>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Worker Type</label>
+                      <select
+                        className="input"
+                        value={expenseForm.newWorkerType}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerType: e.target.value })}
+                      >
+                        <option value="contractor">Contractor / Contract Team</option>
+                        <option value="daily_wage">Daily Wage Worker</option>
+                        <option value="vendor_supplied">Vendor Supplied</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Phone Number (Optional)</label>
+                      <input
+                        className="input"
+                        placeholder="10-digit phone"
+                        value={expenseForm.newWorkerPhone}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerPhone: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Daily Rate (₹, 0 for Contract)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        className="input"
+                        placeholder="0"
+                        value={expenseForm.newWorkerDailyRate}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerDailyRate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Contractor / Duty Note (Optional)</label>
+                    <input
+                      className="input"
+                      placeholder="e.g. Dinu and team, sarfraz-6duty, local team(contract)"
+                      value={expenseForm.newWorkerVendorName}
+                      onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerVendorName: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
