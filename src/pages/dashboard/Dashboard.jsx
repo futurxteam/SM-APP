@@ -95,6 +95,12 @@ export default function Dashboard() {
     loadDashboardData('all', true);
   }, []);
 
+  useEffect(() => {
+    const onRefresh = () => loadDashboardData(selectedProjectId, false);
+    window.addEventListener('hygge:refresh', onRefresh);
+    return () => window.removeEventListener('hygge:refresh', onRefresh);
+  }, [selectedProjectId]);
+
   const handleProjectSelect = (projId) => {
     setSelectedProjectId(projId);
     loadDashboardData(projId);

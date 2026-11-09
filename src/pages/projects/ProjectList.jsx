@@ -58,6 +58,12 @@ export default function ProjectList() {
   }, [filter]);
 
   useEffect(() => {
+    const onRefresh = () => fetchProjects(filter);
+    window.addEventListener('hygge:refresh', onRefresh);
+    return () => window.removeEventListener('hygge:refresh', onRefresh);
+  }, [filter]);
+
+  useEffect(() => {
     const handleGlobalClick = () => setActiveMenuId(null);
     window.addEventListener('click', handleGlobalClick);
     return () => window.removeEventListener('click', handleGlobalClick);

@@ -49,7 +49,7 @@ export default function ProjectDetail() {
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [isWorkerModalOpen, setIsWorkerModalOpen] = useState(false);
   const [isCreatingWorker, setIsCreatingWorker] = useState(false);
-  const [newWorkerForm, setNewWorkerForm] = useState({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
+  const [newWorkerForm, setNewWorkerForm] = useState({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage', vendorName: '' });
 
   const [purchases, setPurchases] = useState(null);
   const [isPurchasesLoading, setIsPurchasesLoading] = useState(false);
@@ -143,6 +143,7 @@ export default function ProjectDetail() {
   const [sitePhotosFiles, setSitePhotosFiles] = useState([]);
   const [labourPaymentFile, setLabourPaymentFile] = useState(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingSeedData, setIsExportingSeedData] = useState(false);
 
   // Edit Project Details State (Admin / Project Manager)
@@ -374,6 +375,20 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleExportSummaryExcel = async () => {
+    if (isExportingExcel) return;
+    setIsExportingExcel(true);
+    try {
+      await handleExportFile(
+        `/exports/project/${projectId}/excel`,
+        `Project_Summary_${project?.code || projectId}_${dayjs().format('YYYYMMDD')}.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const handleExportSeedData = async () => {
     if (isExportingSeedData) return;
     setIsExportingSeedData(true);
@@ -405,6 +420,21 @@ export default function ProjectDetail() {
     if (activeTab === 'execution') loadExecution();
     if (activeTab === 'closure') loadClosure();
   }, [activeTab, attendanceDate]);
+
+  // Listen for global top-right Refresh button click
+  useEffect(() => {
+    const onGlobalRefresh = () => {
+      loadProjectData();
+      if (activeTab === 'attendance') loadAttendance();
+      if (activeTab === 'purchases') loadPurchases();
+      if (activeTab === 'pettycash') loadPettyCash();
+      if (activeTab === 'materials') loadMaterials();
+      if (activeTab === 'execution') loadExecution();
+      if (activeTab === 'closure') loadClosure();
+    };
+    window.addEventListener('hygge:refresh', onGlobalRefresh);
+    return () => window.removeEventListener('hygge:refresh', onGlobalRefresh);
+  }, [projectId, activeTab, attendanceDate, ledgerFilter, ledgerDate, ledgerPage, paymentSummaryDate]);
 
   // Load labour summary when subtab or filter date changes
   useEffect(() => {
@@ -521,6 +551,7 @@ export default function ProjectDetail() {
         remarks: e.remarks || '',
         isPaid: Boolean(e.amountPaid && Number(e.amountPaid) > 0),
         amountPaid: e.amountPaid ? Number(e.amountPaid) : 0,
+        paymentSource: e.paymentSource || 'petty_cash',
       }));
 
       await api.post(`/projects/${projectId}/attendance`, {
@@ -548,7 +579,7 @@ export default function ProjectDetail() {
       const worker = res.data.data;
 
       setIsWorkerModalOpen(false);
-      setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
+      setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage', vendorName: '' });
       setWorkerSearchQuery('');
 
       // Auto add newly created or linked worker directly to today's attendance table without wiping existing list!
@@ -1218,6 +1249,16 @@ export default function ProjectDetail() {
             )}
             <button
               type="button"
+              onClick={handleExportSummaryExcel}
+              disabled={isExportingExcel}
+              className="btn btn-outline btn-sm"
+              style={{ opacity: isExportingExcel ? 0.7 : 1 }}
+            >
+              {isExportingExcel ? <RefreshCw size={14} className="spin-icon" /> : <FileSpreadsheet size={14} />}
+              <span>{isExportingExcel ? 'Generating Excel...' : 'Export Excel Summary'}</span>
+            </button>
+            <button
+              type="button"
               onClick={handleExportPdf}
               disabled={isExportingPdf}
               className="btn btn-outline btn-sm"
@@ -1686,7 +1727,7 @@ export default function ProjectDetail() {
                                           <span>{w.skill || 'General'}</span>
                                           <span>•</span>
                                           <span style={{ fontWeight: 600, color: '#059669' }}>
-                                            {w.dailyRate > 0 ? `₹${w.dailyRate}/day` : w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}
+                                            {w.dailyRate > 0 ? `₹${w.dailyRate}/day` : (w.workerType === 'contractor' || w.workerType === 'contract') ? 'Contractor' : w.workerType === 'permanent' ? 'Permanent' : '—'}
                                           </span>
                                           {w.phone && (
                                             <>
@@ -1742,7 +1783,7 @@ export default function ProjectDetail() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage' });
+                        setNewWorkerForm({ name: '', phone: '', skill: 'General', dailyRate: 800, workerType: 'daily_wage', vendorName: '' });
                         setIsWorkerModalOpen(true);
                       }}
                     >
@@ -1806,7 +1847,7 @@ export default function ProjectDetail() {
                                     </td>
                                     <td>
                                       <span style={{ fontWeight: 600 }}>
-                                        {worker.dailyRate > 0 ? `₹${worker.dailyRate}` : worker.workerType === 'contract' ? 'Contract' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
+                                        {worker.dailyRate > 0 ? `₹${worker.dailyRate}` : (worker.workerType === 'contractor' || worker.workerType === 'contract') ? 'Contractor' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
                                       </span>
                                     </td>
                                     <td>
@@ -1920,7 +1961,7 @@ export default function ProjectDetail() {
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <span className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', fontWeight: 700, fontSize: '12px' }}>
-                                    {worker.dailyRate > 0 ? `₹${worker.dailyRate}/day` : worker.workerType === 'contract' ? 'Contract' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
+                                    {worker.dailyRate > 0 ? `₹${worker.dailyRate}/day` : (worker.workerType === 'contractor' || worker.workerType === 'contract') ? 'Contractor' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
                                   </span>
                                   <button
                                     type="button"
@@ -2149,7 +2190,8 @@ export default function ProjectDetail() {
                         ) : (
                           <>
                             {labourSummary.map((item) => {
-                              const isPaidFull = item.pendingAmount <= 0;
+                              const isContractorNoWage = (item.workerType === 'contractor' || item.workerType === 'contract') && (!item.dailyRate || item.dailyRate === 0) && (!item.totalPaid || item.totalPaid === 0);
+                              const isPaidFull = item.pendingAmount <= 0 && !isContractorNoWage;
                               const isPartial = item.totalPaid > 0 && item.pendingAmount > 0;
                               return (
                                 <tr key={item.workerId || item._id}>
@@ -2162,7 +2204,7 @@ export default function ProjectDetail() {
                                     <span className="text-muted text-xs">{item.workerType?.replace('_', ' ') || 'daily wage'}</span>
                                   </td>
                                   <td>
-                                    {item.dailyRate > 0 ? `₹${item.dailyRate}` : item.workerType === 'contract' ? 'Contract' : item.workerType === 'permanent' ? 'Permanent' : '—'}
+                                    {item.dailyRate > 0 ? `₹${item.dailyRate}` : (item.workerType === 'contractor' || item.workerType === 'contract') ? 'Contractor' : item.workerType === 'permanent' ? 'Permanent' : '—'}
                                   </td>
                                   <td>{item.daysWorked} days</td>
                                   <td style={{ fontWeight: 600 }}>₹{item.totalEarned?.toLocaleString('en-IN')}</td>
@@ -2171,7 +2213,11 @@ export default function ProjectDetail() {
                                     ₹{item.pendingAmount?.toLocaleString('en-IN')}
                                   </td>
                                   <td>
-                                    {isPaidFull ? (
+                                    {isContractorNoWage ? (
+                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#4338CA', backgroundColor: '#EEF2FF', padding: '3px 8px', borderRadius: '4px' }}>
+                                        Attendance Recorded
+                                      </span>
+                                    ) : isPaidFull ? (
                                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', padding: '3px 8px', borderRadius: '4px' }}>
                                         Paid
                                       </span>
@@ -4158,15 +4204,14 @@ export default function ProjectDetail() {
             </div>
 
             <div className="form-group">
-              <label>Daily Rate / Amount (₹) *</label>
+              <label>Daily Rate (₹) {(newWorkerForm.workerType === 'contractor' || newWorkerForm.workerType === 'contract') ? '(Optional / 0)' : '*'}</label>
               <input
                 type="number"
                 min="0"
                 className="input"
                 value={newWorkerForm.dailyRate}
                 onChange={(e) => setNewWorkerForm({ ...newWorkerForm, dailyRate: e.target.value })}
-                placeholder="800"
-                required
+                placeholder="0 for Contractor or 800"
               />
             </div>
           </div>
@@ -4187,14 +4232,32 @@ export default function ProjectDetail() {
               <select
                 className="input"
                 value={newWorkerForm.workerType || 'daily_wage'}
-                onChange={(e) => setNewWorkerForm({ ...newWorkerForm, workerType: e.target.value })}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setNewWorkerForm({
+                    ...newWorkerForm,
+                    workerType: nextType,
+                    dailyRate: nextType === 'contractor' || nextType === 'contract' ? 0 : (newWorkerForm.dailyRate || 800),
+                  });
+                }}
               >
                 <option value="daily_wage">Daily Wage</option>
+                <option value="contractor">Contractor</option>
                 <option value="contract">Contract</option>
                 <option value="permanent">Permanent Staff</option>
                 <option value="vendor_supplied">Vendor Supplied</option>
               </select>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Vendor / Contractor Team Name (Optional)</label>
+            <input
+              className="input"
+              value={newWorkerForm.vendorName || ''}
+              onChange={(e) => setNewWorkerForm({ ...newWorkerForm, vendorName: e.target.value })}
+              placeholder="e.g. Dinu and team, Local Contract Team"
+            />
           </div>
 
           <p className="text-muted text-xs" style={{ margin: '4px 0' }}>

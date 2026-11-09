@@ -4,13 +4,26 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { Building2, LogOut, User as UserIcon, Shield, ChevronDown, RefreshCw } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import AppUpdater from '../../services/appUpdater';
+import { clearApiCache } from '../../services/api';
 
 export default function Navbar({ title }) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [isRefreshingPage, setIsRefreshingPage] = useState(false);
   const dropdownRef = useRef(null);
+
+  const handleRefreshPage = () => {
+    setIsRefreshingPage(true);
+    clearApiCache();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hygge:refresh'));
+    }
+    setTimeout(() => {
+      setIsRefreshingPage(false);
+    }, 600);
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -116,6 +129,37 @@ export default function Navbar({ title }) {
           <Building2 size={14} color="var(--color-brand)" />
           <span>Hygge Architects</span>
         </div>
+
+        {/* Top-Right Refresh Data Button */}
+        <button
+          type="button"
+          onClick={handleRefreshPage}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 11px',
+            borderRadius: 'var(--radius-full)',
+            backgroundColor: '#F8FAFC',
+            border: '1px solid #CBD5E1',
+            color: '#334155',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+          title="Refresh current page data from server"
+        >
+          <RefreshCw
+            size={14}
+            color="var(--color-brand)"
+            style={{
+              transition: 'transform 0.5s ease',
+              transform: isRefreshingPage ? 'rotate(360deg)' : 'rotate(0deg)',
+            }}
+          />
+          <span>Refresh</span>
+        </button>
 
         {/* User Profile Avatar with Dropdown */}
         <div style={{ position: 'relative' }} ref={dropdownRef}>

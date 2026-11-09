@@ -41,6 +41,12 @@ export default function WorkerMasterPage() {
     loadWorkers();
   }, [search, page]);
 
+  useEffect(() => {
+    const onRefresh = () => loadWorkers();
+    window.addEventListener('hygge:refresh', onRefresh);
+    return () => window.removeEventListener('hygge:refresh', onRefresh);
+  }, [search, page]);
+
   const loadWorkers = async () => {
     setIsLoading(true);
     try {
@@ -157,7 +163,7 @@ export default function WorkerMasterPage() {
                       <td>{w.phone || '—'}</td>
                       <td><span style={{ textTransform: 'capitalize' }}>{w.workerType.replace('_', ' ')}</span></td>
                       <td style={{ fontWeight: 600 }}>
-                        {w.dailyRate > 0 ? `₹${w.dailyRate} / day` : w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}
+                        {w.dailyRate > 0 ? `₹${w.dailyRate} / day` : (w.workerType === 'contractor' || w.workerType === 'contract') ? 'Contractor' : w.workerType === 'permanent' ? 'Permanent' : '—'}
                       </td>
                       <td>
                         <Button size="sm" variant="outline" icon={History} onClick={() => handleViewHistory(w._id)}>History</Button>
@@ -231,7 +237,7 @@ export default function WorkerMasterPage() {
                     {w.dailyRate > 0 ? (
                       <>₹{w.dailyRate} <span style={{ fontSize: '10px', color: '#64748B', fontWeight: 500 }}>/ day</span></>
                     ) : (
-                      <span style={{ color: '#64748B', fontWeight: 500 }}>{w.workerType === 'contract' ? 'Contract' : w.workerType === 'permanent' ? 'Permanent' : '—'}</span>
+                      <span style={{ color: '#64748B', fontWeight: 500 }}>{(w.workerType === 'contractor' || w.workerType === 'contract') ? 'Contractor' : w.workerType === 'permanent' ? 'Permanent' : '—'}</span>
                     )}
                   </div>
                 </div>
@@ -295,8 +301,20 @@ export default function WorkerMasterPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="form-group">
               <label>Worker Type</label>
-              <select className="input" value={formData.workerType} onChange={(e) => setFormData({ ...formData, workerType: e.target.value })}>
+              <select
+                className="input"
+                value={formData.workerType}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setFormData({
+                    ...formData,
+                    workerType: nextType,
+                    dailyRate: nextType === 'contractor' || nextType === 'contract' ? 0 : (formData.dailyRate || 800),
+                  });
+                }}
+              >
                 <option value="daily_wage">Daily Wage</option>
+                <option value="contractor">Contractor</option>
                 <option value="contract">Contract Worker</option>
                 <option value="permanent">Permanent Staff</option>
                 <option value="vendor_supplied">Vendor Supplied</option>
@@ -304,9 +322,14 @@ export default function WorkerMasterPage() {
             </div>
 
             <div className="form-group">
-              <label>Daily Rate (₹)</label>
-              <input type="number" className="input" value={formData.dailyRate} onChange={(e) => setFormData({ ...formData, dailyRate: e.target.value })} />
+              <label>Daily Rate (₹) {(formData.workerType === 'contractor' || formData.workerType === 'contract') ? '(Optional / 0)' : ''}</label>
+              <input type="number" min="0" className="input" value={formData.dailyRate} onChange={(e) => setFormData({ ...formData, dailyRate: e.target.value })} />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Vendor / Contractor Team Name (Optional)</label>
+            <input className="input" value={formData.vendorName} onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })} placeholder="e.g. Dinu and team, Local Contract Team" />
           </div>
         </form>
       </Modal>
