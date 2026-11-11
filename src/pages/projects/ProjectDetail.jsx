@@ -4720,6 +4720,21 @@ export default function ProjectDetail() {
             </div>
           </div>
 
+          {purchaseForm.category === 'material' && (
+            <div className="form-group">
+              <label style={{ fontWeight: 600, fontSize: '12px', color: '#1E293B' }}>Material Trade / Sub-Division *</label>
+              <select
+                className="input"
+                value={purchaseForm.subDivision || 'General'}
+                onChange={(e) => setPurchaseForm({ ...purchaseForm, subDivision: e.target.value })}
+              >
+                {MATERIAL_SUBDIVISIONS.map(trade => (
+                  <option key={trade} value={trade}>{trade}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {(purchaseForm.category === 'labour' || purchaseForm.category === 'contract_labour' || purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services') && (
             <div style={{
               backgroundColor: '#F0F9FF',
@@ -5217,6 +5232,21 @@ export default function ProjectDetail() {
               ))}
             </select>
           </div>
+
+          {expenseForm.category === 'material' && (
+            <div className="form-group">
+              <label style={{ fontWeight: 600, fontSize: '12px', color: '#1E293B' }}>Material Trade / Sub-Division *</label>
+              <select
+                className="input"
+                value={expenseForm.subDivision || 'General'}
+                onChange={(e) => setExpenseForm({ ...expenseForm, subDivision: e.target.value })}
+              >
+                {MATERIAL_SUBDIVISIONS.map(trade => (
+                  <option key={trade} value={trade}>{trade}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {expenseForm.category === 'custom' && (
             <div className="form-group">
