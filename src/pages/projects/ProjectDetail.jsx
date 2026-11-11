@@ -1651,7 +1651,6 @@ export default function ProjectDetail() {
                   {timelineInfo.detailValue}
                 </span>
               </div>
-              <div><strong>Project Manager:</strong> {project.assignedManager?.name || 'Unassigned'}</div>
               <div>
                 <strong>Site Supervisor(s):</strong>{' '}
                 {project.assignedSupervisors?.length > 0
@@ -6264,19 +6263,7 @@ export default function ProjectDetail() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Project Manager</label>
-              <select
-                className="input"
-                value={editProjectForm.assignedManager}
-                onChange={(e) => setEditProjectForm({ ...editProjectForm, assignedManager: e.target.value })}
-              >
-                <option value="">Unassigned</option>
-                {(assignableStaff?.projectManagers || assignableStaff?.managers || []).map((m) => (
-                  <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
-                ))}
-              </select>
-            </div>
+
 
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
               <label className="form-label" style={{ fontWeight: 600, fontSize: '12px' }}>Site Supervisor(s)</label>

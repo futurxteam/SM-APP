@@ -1,14 +1,14 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/useAuthStore';
-import { 
-  LayoutDashboard, 
-  FolderKanban, 
-  Users, 
-  UserCheck, 
-  Activity, 
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Users,
+  UserCheck,
+  Activity,
   Briefcase,
-  LogOut, 
+  LogOut,
   X
 } from 'lucide-react';
 
@@ -44,8 +44,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
         justifyContent: 'space-between',
         gap: '12px'
       }}>
-        <NavLink 
-          to="/" 
+        <NavLink
+          to="/"
           onClick={handleLinkClick}
           style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
         >
@@ -96,8 +96,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
 
       {/* Navigation Menu */}
       <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto' }}>
-        <NavLink 
-          to="/dashboard" 
+        <NavLink
+          to="/dashboard"
           onClick={handleLinkClick}
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
           style={({ isActive }) => ({
@@ -118,8 +118,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
           <span>Dashboard</span>
         </NavLink>
 
-        <NavLink 
-          to="/projects" 
+        <NavLink
+          to="/projects"
           onClick={handleLinkClick}
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
           style={({ isActive }) => ({
@@ -140,8 +140,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
           <span>Projects</span>
         </NavLink>
 
-        <NavLink 
-          to="/workers" 
+        <NavLink
+          to="/workers"
           onClick={handleLinkClick}
           className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
           style={({ isActive }) => ({
@@ -164,21 +164,21 @@ export default function Sidebar({ isOpen = false, onClose }) {
 
         {isSuperAdmin() && (
           <>
-            <div style={{ 
-              fontSize: '11px', 
-              fontWeight: 600, 
-              color: 'var(--color-sidebar-text)', 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.05em', 
+            <div style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--color-sidebar-text)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
               marginTop: '16px',
               paddingLeft: '14px',
-              marginBottom: '4px' 
+              marginBottom: '4px'
             }}>
               Administration
             </div>
 
-            <NavLink 
-              to="/admin/users" 
+            <NavLink
+              to="/admin/users"
               onClick={handleLinkClick}
               style={({ isActive }) => ({
                 display: 'flex',
@@ -197,8 +197,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
               <span>User Accounts</span>
             </NavLink>
 
-            <NavLink 
-              to="/admin/careers" 
+            <NavLink
+              to="/admin/careers"
               onClick={handleLinkClick}
               style={({ isActive }) => ({
                 display: 'flex',
@@ -217,8 +217,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
               <span>Careers</span>
             </NavLink>
 
-            <NavLink 
-              to="/admin/portfolio" 
+            <NavLink
+              to="/admin/portfolio"
               onClick={handleLinkClick}
               style={({ isActive }) => ({
                 display: 'flex',
@@ -237,8 +237,8 @@ export default function Sidebar({ isOpen = false, onClose }) {
               <span>Website Projects</span>
             </NavLink>
 
-            <NavLink 
-              to="/admin/activity-log" 
+            <NavLink
+              to="/admin/activity-log"
               onClick={handleLinkClick}
               style={({ isActive }) => ({
                 display: 'flex',
