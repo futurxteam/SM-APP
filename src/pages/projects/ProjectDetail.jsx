@@ -4695,9 +4695,10 @@ export default function ProjectDetail() {
                     ...purchaseForm,
                     category: cat,
                     isRental: isRentCat,
-                    isMaterialPurchase: isMat || isRentCat,
+                    isMaterialPurchase: isMat ? true : false,
                     amount: nextAmt,
-                    materialName: isMat && !purchaseForm.materialName ? '' : purchaseForm.materialName,
+                    materialName: isMat ? purchaseForm.materialName : '',
+                    ...(!isMat ? { selectedItemId: '', isNewMaterial: false, materialQuantity: '', materialUnitCost: '' } : {}),
                     ...(!isLabourCat ? { selectedWorkerId: '', isNewWorker: false, newWorkerName: '', newWorkerPhone: '', newWorkerSkill: 'General', newWorkerType: 'contractor', newWorkerDailyRate: '', newWorkerVendorName: '' } : {})
                   });
                 }}
@@ -4991,168 +4992,172 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#3730A3', backgroundColor: '#EEF2FF', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={purchaseForm.isMaterialPurchase}
-              onChange={(e) => setPurchaseForm({ ...purchaseForm, isMaterialPurchase: e.target.checked })}
-            />
-            Link & Add to Site Material Inventory (Tagged as DIRECT PURCHASE)
-          </label>
+          {purchaseForm.category === 'material' && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#3730A3', backgroundColor: '#EEF2FF', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={purchaseForm.isMaterialPurchase}
+                  onChange={(e) => setPurchaseForm({ ...purchaseForm, isMaterialPurchase: e.target.checked })}
+                />
+                Link & Add to Site Material Inventory (Tagged as DIRECT PURCHASE)
+              </label>
 
-          {purchaseForm.isMaterialPurchase && (
-            <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* ── Material Selector ── */}
-              <div className="form-group">
-                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item *</label>
-                <select
-                  className="input"
-                  value={purchaseForm.selectedItemId || (purchaseForm.isNewMaterial ? '__new__' : '')}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '__new__') {
-                      setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: true, materialName: '', materialUnit: 'Bags' });
-                    } else if (val === '') {
-                      setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
-                    } else {
-                      const item = (materials?.items || []).find(i => i._id === val);
-                      setPurchaseForm({
-                        ...purchaseForm,
-                        selectedItemId: val,
-                        isNewMaterial: false,
-                        materialName: item?.itemName || '',
-                        materialUnit: item?.unit || 'Bags',
-                        subDivision: item?.subDivision || purchaseForm.subDivision || 'General'
-                      });
-                    }
-                  }}
-                >
-                  <option value="">— Select existing item to restock —</option>
-                  {(materials?.items || []).map(item => (
-                    <option key={item._id} value={item._id}>
-                      {item.itemName} [{item.subDivision || 'General'}] (Balance: {item.balance ?? 0} {item.unit || ''})
-                    </option>
-                  ))}
-                  <option value="__new__">+ Register New Material Item</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Trade / Sub-Division *</label>
-                <select
-                  className="input"
-                  value={purchaseForm.subDivision || 'General'}
-                  onChange={(e) => setPurchaseForm({ ...purchaseForm, subDivision: e.target.value })}
-                >
-                  {MATERIAL_SUBDIVISIONS.map(trade => (
-                    <option key={trade} value={trade}>{trade}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Restock info banner */}
-              {purchaseForm.selectedItemId && (() => {
-                const sel = (materials?.items || []).find(i => i._id === purchaseForm.selectedItemId);
-                return sel ? (
-                  <div style={{ padding: '8px 12px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', fontSize: '12px', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    ℹ️ <span>Restocking <strong>{sel.itemName}</strong> — Current stock: <strong>{sel.balance ?? 0} {sel.unit || ''}</strong>. This quantity will be added to the existing balance.</span>
+              {purchaseForm.isMaterialPurchase && (
+                <div style={{ backgroundColor: '#F8FAFC', padding: '12px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* ── Material Selector ── */}
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Item *</label>
+                    <select
+                      className="input"
+                      value={purchaseForm.selectedItemId || (purchaseForm.isNewMaterial ? '__new__' : '')}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '__new__') {
+                          setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: true, materialName: '', materialUnit: 'Bags' });
+                        } else if (val === '') {
+                          setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
+                        } else {
+                          const item = (materials?.items || []).find(i => i._id === val);
+                          setPurchaseForm({
+                            ...purchaseForm,
+                            selectedItemId: val,
+                            isNewMaterial: false,
+                            materialName: item?.itemName || '',
+                            materialUnit: item?.unit || 'Bags',
+                            subDivision: item?.subDivision || purchaseForm.subDivision || 'General'
+                          });
+                        }
+                      }}
+                    >
+                      <option value="">— Select existing item to restock —</option>
+                      {(materials?.items || []).map(item => (
+                        <option key={item._id} value={item._id}>
+                          {item.itemName} [{item.subDivision || 'General'}] (Balance: {item.balance ?? 0} {item.unit || ''})
+                        </option>
+                      ))}
+                      <option value="__new__">+ Register New Material Item</option>
+                    </select>
                   </div>
-                ) : null;
-              })()}
 
-              {/* New material name input + duplicate warning */}
-              {purchaseForm.isNewMaterial && (
-                <div className="form-group">
-                  <label style={{ fontWeight: 600, fontSize: '12px' }}>New Material Name *</label>
-                  <input
-                    className="input"
-                    placeholder="e.g. UltraTech 53 Grade Cement / 12mm TMT Steel"
-                    value={purchaseForm.materialName}
-                    onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })}
-                    required
-                  />
-                  {purchaseForm.materialName?.trim() && (materials?.items || []).some(
-                    i => i.itemName.toLowerCase() === purchaseForm.materialName.trim().toLowerCase()
-                  ) && (
-                      <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
-                        ⚠️ <strong>"{purchaseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                  <div className="form-group">
+                    <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Trade / Sub-Division *</label>
+                    <select
+                      className="input"
+                      value={purchaseForm.subDivision || 'General'}
+                      onChange={(e) => setPurchaseForm({ ...purchaseForm, subDivision: e.target.value })}
+                    >
+                      {MATERIAL_SUBDIVISIONS.map(trade => (
+                        <option key={trade} value={trade}>{trade}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Restock info banner */}
+                  {purchaseForm.selectedItemId && (() => {
+                    const sel = (materials?.items || []).find(i => i._id === purchaseForm.selectedItemId);
+                    return sel ? (
+                      <div style={{ padding: '8px 12px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', fontSize: '12px', color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        ℹ️ <span>Restocking <strong>{sel.itemName}</strong> — Current stock: <strong>{sel.balance ?? 0} {sel.unit || ''}</strong>. This quantity will be added to the existing balance.</span>
                       </div>
-                    )}
+                    ) : null;
+                  })()}
+
+                  {/* New material name input + duplicate warning */}
+                  {purchaseForm.isNewMaterial && (
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px' }}>New Material Name *</label>
+                      <input
+                        className="input"
+                        placeholder="e.g. UltraTech 53 Grade Cement / 12mm TMT Steel"
+                        value={purchaseForm.materialName}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, materialName: e.target.value })}
+                        required
+                      />
+                      {purchaseForm.materialName?.trim() && (materials?.items || []).some(
+                        i => i.itemName.toLowerCase() === purchaseForm.materialName.trim().toLowerCase()
+                      ) && (
+                          <div style={{ marginTop: '4px', padding: '6px 10px', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: '4px', fontSize: '11px', color: '#92400E' }}>
+                            ⚠️ <strong>"{purchaseForm.materialName}"</strong> already exists in site inventory. Select it from the dropdown above to merge stock, or use a distinct name.
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  <div className="responsive-grid-3col" style={{ gap: '10px' }}>
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit *</label>
+                      <select
+                        className="input"
+                        value={purchaseForm.materialUnit || 'Bags'}
+                        disabled={!!purchaseForm.selectedItemId}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })}
+                        style={purchaseForm.selectedItemId ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
+                      >
+                        <option value="Bags">Bags</option>
+                        <option value="Tons">Tons</option>
+                        <option value="Kg">Kg</option>
+                        <option value="Liters">Liters</option>
+                        <option value="Sq.Ft">Sq.Ft</option>
+                        <option value="Pieces">Pieces / Nos</option>
+                        <option value="Brass">Brass</option>
+                        <option value="Trips">Trips / Loads</option>
+                        <option value="Meters">Meters</option>
+                        <option value="Units">Units / Boxes</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px' }}>Quantity Received *</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="input"
+                        placeholder="e.g. 100"
+                        value={purchaseForm.materialQuantity}
+                        onChange={(e) => {
+                          const qty = e.target.value;
+                          const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
+                          const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
+                          const unitCost = isRent ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost;
+                          const amount = qty && unitCost ? (Number(qty) * Number(unitCost) * days).toFixed(2) : purchaseForm.amount;
+                          setPurchaseForm({ ...purchaseForm, materialQuantity: qty, amount: amount || purchaseForm.amount });
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label style={{ fontWeight: 600, fontSize: '12px' }}>
+                        {(purchaseForm.isRental || purchaseForm.category === 'Rental') ? 'Per Day Rate (₹/day)' : 'Unit Rate (₹/unit)'}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="input"
+                        placeholder="e.g. 380"
+                        value={(purchaseForm.isRental || purchaseForm.category === 'Rental') ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost}
+                        onChange={(e) => {
+                          const rate = e.target.value;
+                          const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
+                          const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
+                          const qty = purchaseForm.materialQuantity || (isRent ? 1 : '');
+                          const amount = qty && rate ? (Number(qty) * Number(rate) * days).toFixed(2) : purchaseForm.amount;
+                          setPurchaseForm({
+                            ...purchaseForm,
+                            materialUnitCost: rate,
+                            ...(isRent ? { perDayRental: rate } : {}),
+                            amount: amount || purchaseForm.amount
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
-
-              <div className="responsive-grid-3col" style={{ gap: '10px' }}>
-                <div className="form-group">
-                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Unit *</label>
-                  <select
-                    className="input"
-                    value={purchaseForm.materialUnit || 'Bags'}
-                    disabled={!!purchaseForm.selectedItemId}
-                    onChange={(e) => setPurchaseForm({ ...purchaseForm, materialUnit: e.target.value })}
-                    style={purchaseForm.selectedItemId ? { backgroundColor: '#F1F5F9', color: '#64748B', cursor: 'not-allowed' } : {}}
-                  >
-                    <option value="Bags">Bags</option>
-                    <option value="Tons">Tons</option>
-                    <option value="Kg">Kg</option>
-                    <option value="Liters">Liters</option>
-                    <option value="Sq.Ft">Sq.Ft</option>
-                    <option value="Pieces">Pieces / Nos</option>
-                    <option value="Brass">Brass</option>
-                    <option value="Trips">Trips / Loads</option>
-                    <option value="Meters">Meters</option>
-                    <option value="Units">Units / Boxes</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 600, fontSize: '12px' }}>Quantity Received *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="input"
-                    placeholder="e.g. 100"
-                    value={purchaseForm.materialQuantity}
-                    onChange={(e) => {
-                      const qty = e.target.value;
-                      const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
-                      const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
-                      const unitCost = isRent ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost;
-                      const amount = qty && unitCost ? (Number(qty) * Number(unitCost) * days).toFixed(2) : purchaseForm.amount;
-                      setPurchaseForm({ ...purchaseForm, materialQuantity: qty, amount: amount || purchaseForm.amount });
-                    }}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 600, fontSize: '12px' }}>
-                    {(purchaseForm.isRental || purchaseForm.category === 'Rental') ? 'Per Day Rate (₹/day)' : 'Unit Rate (₹/unit)'}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="input"
-                    placeholder="e.g. 380"
-                    value={(purchaseForm.isRental || purchaseForm.category === 'Rental') ? (purchaseForm.perDayRental || purchaseForm.materialUnitCost) : purchaseForm.materialUnitCost}
-                    onChange={(e) => {
-                      const rate = e.target.value;
-                      const isRent = purchaseForm.isRental || purchaseForm.category === 'Rental';
-                      const days = isRent ? calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate) : 1;
-                      const qty = purchaseForm.materialQuantity || (isRent ? 1 : '');
-                      const amount = qty && rate ? (Number(qty) * Number(rate) * days).toFixed(2) : purchaseForm.amount;
-                      setPurchaseForm({
-                        ...purchaseForm,
-                        materialUnitCost: rate,
-                        ...(isRent ? { perDayRental: rate } : {}),
-                        amount: amount || purchaseForm.amount
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
+            </>
           )}
 
           <div className="form-group">
