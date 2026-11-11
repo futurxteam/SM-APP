@@ -23,6 +23,50 @@ import ExportReportModal from '../../components/common/ExportReportModal';
 import SeedDataModal from '../../components/projects/SeedDataModal';
 import GeoAttendanceSettingsModal from '../../components/projects/GeoAttendanceSettingsModal';
 
+const MATERIAL_SUBDIVISIONS = [
+  'Civil',
+  'Electrical',
+  'Plumbing',
+  'Carpentry',
+  'Painting',
+  'Welding',
+  'Tiles',
+  'Partition',
+  'Glazing',
+  'Gypsum',
+  'General',
+];
+
+const LABOUR_SUBDIVISIONS = [
+  'Civil',
+  'Electrical',
+  'Plumbing',
+  'Carpentry',
+  'Painting',
+  'Welding',
+  'Tiles',
+  'Partition',
+  'Glazing',
+  'Gypsum',
+  'Unloading',
+  'Cleaning',
+  'General',
+];
+
+const UNIFIED_EXPENSE_CATEGORIES = [
+  { value: 'material', label: 'Material charges' },
+  { value: 'tools_rental', label: 'Rental (Tools / Equipment / Material Rental)' },
+  { value: 'labour', label: 'Labour / Contractor Charges' },
+  { value: 'transportation', label: 'Transportation charges' },
+  { value: 'fuel', label: 'Fuel expenses' },
+  { value: 'accommodation', label: 'Accommodation expenses' },
+  { value: 'tools', label: 'Tools charges' },
+  { value: 'stationery', label: 'Stationery' },
+  { value: 'travel', label: 'Travel expenses' },
+  { value: 'food', label: 'Food expenses' },
+  { value: 'custom', label: 'Custom expense' },
+];
+
 export default function ProjectDetail() {
   const { id: projectId } = useParams();
   const navigate = useNavigate();
@@ -65,7 +109,8 @@ export default function ProjectDetail() {
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [isSubmittingPurchase, setIsSubmittingPurchase] = useState(false);
   const [purchaseForm, setPurchaseForm] = useState({
-    category: 'Material',
+    category: 'material',
+    subDivision: 'General',
     description: '',
     amount: '',
     isMaterialPurchase: true,
@@ -103,11 +148,12 @@ export default function ProjectDetail() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
-    category: 'fuel',
+    category: 'material',
+    subDivision: 'General',
     customCategoryName: '',
     description: '',
     amount: '',
-    isMaterialPurchase: false,
+    isMaterialPurchase: true,
     useRentalCalc: false,
     perDayRental: '',
     acquiredDate: dayjs().format('YYYY-MM-DD'),
@@ -142,6 +188,7 @@ export default function ProjectDetail() {
   const [directRefillForm, setDirectRefillForm] = useState({ amount: '', reason: '' });
 
   const [materials, setMaterials] = useState(null);
+  const [materialSubDivisionFilter, setMaterialSubDivisionFilter] = useState('all');
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false);
   const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
   const [isSubmittingMaterial, setIsSubmittingMaterial] = useState(false);
@@ -149,6 +196,7 @@ export default function ProjectDetail() {
     selectedItemId: '',
     isNewMaterial: false,
     itemName: '',
+    subDivision: 'General',
     source: 'site_stock',
     useRentalCalc: false,
     unit: 'Bags',
@@ -685,10 +733,12 @@ export default function ProjectDetail() {
   const handleAddPurchase = async (e) => {
     e.preventDefault();
     if (isSubmittingPurchase) return;
-    const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental');
-    const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
-    if (!isLabourPurchase && !purchaseFile) {
-      alert('Invoice image/document is required!');
+    const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental' || purchaseForm.category === 'tools_rental' || purchaseForm.category === 'rental');
+    const isLabourPurchase = purchaseForm.category === 'labour' || purchaseForm.category === 'contract_labour' || purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+    const OPTIONAL_INVOICE_PURCHASE = ['labour', 'contract_labour', 'Labour / Contractor Charges', 'Subcontractor & Services', 'tools_rental', 'rental', 'Rental', 'travel', 'Travel expenses', 'accommodation', 'Accommodation expenses', 'transportation', 'Transportation charges'];
+    const isInvoiceOptional = OPTIONAL_INVOICE_PURCHASE.includes(purchaseForm.category) || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+    if (!isInvoiceOptional && !purchaseFile) {
+      alert('Invoice image/document is required for this purchase category!');
       return;
     }
     if (purchaseForm.isNewWorker && !purchaseForm.newWorkerName?.trim()) {
@@ -698,6 +748,7 @@ export default function ProjectDetail() {
     const useCalc = isRent && Boolean(purchaseForm.useRentalCalc);
     const formData = new FormData();
     formData.append('category', purchaseForm.category);
+    formData.append('subDivision', purchaseForm.subDivision || 'General');
     formData.append('purchaseType', isRent ? 'rental' : (isLabourPurchase ? 'contract_labour' : 'direct_expense'));
     formData.append('description', purchaseForm.description);
     formData.append('amount', purchaseForm.amount);
@@ -741,7 +792,8 @@ export default function ProjectDetail() {
       const createdNewWorker = Boolean(purchaseForm.isNewWorker && purchaseForm.newWorkerName?.trim());
       setIsPurchaseModalOpen(false);
       setPurchaseForm({
-        category: 'Material',
+        category: 'material',
+        subDivision: 'General',
         description: '',
         amount: '',
         isMaterialPurchase: true,
@@ -837,7 +889,7 @@ export default function ProjectDetail() {
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (isSubmittingExpense) return;
-    const OPTIONAL_RECEIPT_PETTY_CASH = ['labour', 'tools_rental', 'travel', 'accommodation', 'transportation'];
+    const OPTIONAL_RECEIPT_PETTY_CASH = ['labour', 'tools_rental', 'rental', 'travel', 'accommodation', 'transportation'];
     const isReceiptOptional = OPTIONAL_RECEIPT_PETTY_CASH.includes(expenseForm.category);
     if (!isReceiptOptional && !expenseFile) {
       alert('Receipt image is mandatory for this expense category!');
@@ -845,7 +897,7 @@ export default function ProjectDetail() {
     }
 
     const isMat = expenseForm.category === 'material' && Boolean(expenseForm.isMaterialPurchase);
-    const isRentalPaid = expenseForm.category === 'tools_rental';
+    const isRentalPaid = expenseForm.category === 'tools_rental' || expenseForm.category === 'rental';
     if (isMat && !expenseForm.selectedItemId && (!expenseForm.materialName?.trim() || !expenseForm.materialQuantity || Number(expenseForm.materialQuantity) <= 0)) {
       alert('Please select an existing material or enter a new material name and a valid quantity (or uncheck "Track in Material Inventory").');
       return;
@@ -861,6 +913,7 @@ export default function ProjectDetail() {
 
     const formData = new FormData();
     formData.append('category', expenseForm.category);
+    formData.append('subDivision', expenseForm.subDivision || 'General');
     formData.append('customCategoryName', expenseForm.customCategoryName);
     formData.append('description', expenseForm.description || (isRentalPaid && expenseForm.materialName ? `Rental paid: ${expenseForm.materialName}` : ''));
     formData.append('amount', expenseForm.amount);
@@ -909,11 +962,12 @@ export default function ProjectDetail() {
       const createdNewWorker = Boolean(expenseForm.category === 'labour' && expenseForm.isNewWorker && expenseForm.newWorkerName?.trim());
       setIsExpenseModalOpen(false);
       setExpenseForm({
-        category: 'fuel',
+        category: 'material',
+        subDivision: 'General',
         customCategoryName: '',
         description: '',
         amount: '',
-        isMaterialPurchase: false,
+        isMaterialPurchase: true,
         useRentalCalc: false,
         perDayRental: '',
         acquiredDate: dayjs().format('YYYY-MM-DD'),
@@ -1069,6 +1123,7 @@ export default function ProjectDetail() {
         selectedItemId: '',
         isNewMaterial: false,
         itemName: '',
+        subDivision: 'General',
         source: 'site_stock',
         useRentalCalc: false,
         unit: 'Bags',
@@ -3581,6 +3636,32 @@ export default function ProjectDetail() {
                   )}                </div>
               </div>
 
+              {/* Material Sub-Division Filter Pills */}
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '14px', borderBottom: '1px solid #E2E8F0' }}>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${materialSubDivisionFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ borderRadius: '16px', padding: '4px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                  onClick={() => setMaterialSubDivisionFilter('all')}
+                >
+                  All Trades ({materials.items.length})
+                </button>
+                {MATERIAL_SUBDIVISIONS.map(trade => {
+                  const count = (materials.items || []).filter(m => (m.subDivision || 'General').toLowerCase() === trade.toLowerCase()).length;
+                  return (
+                    <button
+                      key={trade}
+                      type="button"
+                      className={`btn btn-xs ${materialSubDivisionFilter.toLowerCase() === trade.toLowerCase() ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ borderRadius: '16px', padding: '4px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                      onClick={() => setMaterialSubDivisionFilter(trade)}
+                    >
+                      {trade} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Desktop Table View */}
               <div className="desktop-only-table">
                 <div className="table-scroll-hint"> Swipe horizontally to view material inventory </div>
@@ -3588,7 +3669,7 @@ export default function ProjectDetail() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Item Name</th>
+                        <th>Item Name & Trade</th>
                         <th>Source Type</th>
                         <th>Unit</th>
                         <th>Received</th>
@@ -3600,10 +3681,10 @@ export default function ProjectDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {materials.items.length === 0 ? (
-                        <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials added.</td></tr>
+                      {materials.items.filter(m => materialSubDivisionFilter === 'all' || (m.subDivision || 'General').toLowerCase() === materialSubDivisionFilter.toLowerCase()).length === 0 ? (
+                        <tr><td colSpan="9" style={{ textAlign: 'center', color: '#94A3B8', padding: '32px' }}>No materials found {materialSubDivisionFilter !== 'all' ? `for "${materialSubDivisionFilter}" trade` : ''}.</td></tr>
                       ) : (
-                        materials.items.map(m => {
+                        materials.items.filter(m => materialSubDivisionFilter === 'all' || (m.subDivision || 'General').toLowerCase() === materialSubDivisionFilter.toLowerCase()).map(m => {
                           const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
                           if (m.isRental && !sources.includes('rental')) sources.push('rental');
                           if (sources.length === 0) {
@@ -3614,7 +3695,21 @@ export default function ProjectDetail() {
                           return (
                             <tr key={m._id}>
                               <td>
-                                <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <strong style={{ color: '#0F172A' }}>{m.itemName}</strong>
+                                  <span
+                                    className="badge"
+                                    style={{
+                                      backgroundColor: '#F0FDF4',
+                                      color: '#166534',
+                                      border: '1px solid #BBF7D0',
+                                      fontWeight: 600,
+                                      fontSize: '10px'
+                                    }}
+                                  >
+                                    {m.subDivision || 'General'}
+                                  </span>
+                                </div>
                                 {(m.isRental || sources.includes('rental')) && (m.perDayRental > 0 || m.acquiredDate) && (
                                   <div style={{ fontSize: '11px', color: '#7C3AED', marginTop: '2px', fontWeight: 500 }}>
                                     ₹{(m.perDayRental || m.unitCost || 0).toLocaleString('en-IN')}/day
@@ -3741,13 +3836,13 @@ export default function ProjectDetail() {
 
               {/* Mobile Card List (No Horizontal Scroll) */}
               <div className="mobile-only-card-list" style={{ marginTop: '12px' }}>
-                {materials.items.length === 0 ? (
+                {materials.items.filter(m => materialSubDivisionFilter === 'all' || (m.subDivision || 'General').toLowerCase() === materialSubDivisionFilter.toLowerCase()).length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#94A3B8', padding: '32px 16px', fontSize: '13px' }}>
-                    No materials added.
+                    No materials found {materialSubDivisionFilter !== 'all' ? `for "${materialSubDivisionFilter}" trade` : ''}.
                   </div>
                 ) : (
                   <>
-                    {materials.items.map(m => {
+                    {materials.items.filter(m => materialSubDivisionFilter === 'all' || (m.subDivision || 'General').toLowerCase() === materialSubDivisionFilter.toLowerCase()).map(m => {
                       const sources = [...new Set((m.transactions || []).map(tx => tx.source).filter(Boolean))];
                       if (m.isRental && !sources.includes('rental')) sources.push('rental');
                       if (sources.length === 0) {
@@ -3759,7 +3854,21 @@ export default function ProjectDetail() {
                         <div key={m._id} className="mobile-data-card" style={{ padding: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                             <div>
-                              <strong style={{ fontSize: '15px', color: '#0F172A' }}>{m.itemName}</strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <strong style={{ fontSize: '15px', color: '#0F172A' }}>{m.itemName}</strong>
+                                <span
+                                  className="badge"
+                                  style={{
+                                    backgroundColor: '#F0FDF4',
+                                    color: '#166534',
+                                    border: '1px solid #BBF7D0',
+                                    fontWeight: 600,
+                                    fontSize: '10px'
+                                  }}
+                                >
+                                  {m.subDivision || 'General'}
+                                </span>
+                              </div>
                               <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px' }}>
                                 Unit: <strong>{m.unit || 'Units'}</strong>
                               </div>
@@ -4572,12 +4681,12 @@ export default function ProjectDetail() {
                 value={purchaseForm.category}
                 onChange={(e) => {
                   const cat = e.target.value;
-                  const isRentCat = cat === 'Rental';
-                  const isLabourCat = cat === 'Labour / Contractor Charges' || cat === 'Subcontractor & Services';
+                  const isRentCat = cat === 'tools_rental' || cat === 'rental' || cat === 'Rental';
+                  const isLabourCat = cat === 'labour' || cat === 'contract_labour' || cat === 'Labour / Contractor Charges' || cat === 'Subcontractor & Services';
                   if (isLabourCat && workersList.length === 0) {
                     loadProjectWorkers();
                   }
-                  const isMat = !['Tools & Machinery', 'Labour / Contractor Charges', 'Subcontractor & Services', 'Logistics & Transportation', 'Miscellaneous'].includes(cat);
+                  const isMat = cat === 'material';
                   const days = calcRentalDays(purchaseForm.acquiredDate, purchaseForm.returnDate);
                   const qty = Number(purchaseForm.materialQuantity) || 1;
                   const rate = Number(purchaseForm.perDayRental || purchaseForm.materialUnitCost) || 0;
@@ -4585,30 +4694,18 @@ export default function ProjectDetail() {
                   setPurchaseForm({
                     ...purchaseForm,
                     category: cat,
-                    isRental: isRentCat ? true : purchaseForm.isRental,
-                    isMaterialPurchase: isMat,
+                    isRental: isRentCat,
+                    isMaterialPurchase: isMat || isRentCat,
                     amount: nextAmt,
-                    materialName: isMat && !purchaseForm.materialName ? cat : purchaseForm.materialName,
+                    materialName: isMat && !purchaseForm.materialName ? '' : purchaseForm.materialName,
                     ...(!isLabourCat ? { selectedWorkerId: '', isNewWorker: false, newWorkerName: '', newWorkerPhone: '', newWorkerSkill: 'General', newWorkerType: 'contractor', newWorkerDailyRate: '', newWorkerVendorName: '' } : {})
                   });
                 }}
                 required
               >
-                <option value="Material">Material (General)</option>
-                <option value="Rental">Rental (Tools / Equipment / Material Rental)</option>
-                <option value="Labour / Contractor Charges">Labour / Contractor Charges</option>
-                <option value="Cement">Cement & Aggregates</option>
-                <option value="Steel & Rebar">Steel & Rebar</option>
-                <option value="Sand & Aggregates">Sand & Aggregates</option>
-                <option value="Bricks & Blocks">Bricks & AAC Blocks</option>
-                <option value="Plumbing & Sanitary">Plumbing & Sanitary</option>
-                <option value="Electrical Goods">Electrical Goods</option>
-                <option value="Paint & Chemicals">Paint & Chemicals</option>
-                <option value="Tools & Machinery">Tools & Machinery</option>
-                <option value="Consumables & Safety">Consumables & Safety Gear</option>
-                <option value="Subcontractor & Services">Subcontractor & Services</option>
-                <option value="Logistics & Transportation">Logistics & Transportation</option>
-                <option value="Miscellaneous">Miscellaneous</option>
+                {UNIFIED_EXPENSE_CATEGORIES.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
               </select>
             </div>
 
@@ -4623,7 +4720,7 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          {(purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services') && (
+          {(purchaseForm.category === 'labour' || purchaseForm.category === 'contract_labour' || purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services') && (
             <div style={{
               backgroundColor: '#F0F9FF',
               border: '1px solid #BAE6FD',
@@ -4641,6 +4738,26 @@ export default function ProjectDetail() {
               </div>
 
               <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Labour Trade / Sub-Category *</label>
+                <select
+                  className="input"
+                  value={purchaseForm.subDivision || 'General'}
+                  onChange={(e) => {
+                    const trade = e.target.value;
+                    setPurchaseForm({
+                      ...purchaseForm,
+                      subDivision: trade,
+                      ...(purchaseForm.isNewWorker ? { newWorkerSkill: trade } : {})
+                    });
+                  }}
+                >
+                  {LABOUR_SUBDIVISIONS.map(trade => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Select Worker / Contractor or Create New</label>
                 <select
                   className="input"
@@ -4654,7 +4771,7 @@ export default function ProjectDetail() {
                         isNewWorker: true,
                         newWorkerName: '',
                         newWorkerPhone: '',
-                        newWorkerSkill: 'General',
+                        newWorkerSkill: purchaseForm.subDivision || 'General',
                         newWorkerType: 'contractor',
                         newWorkerDailyRate: '',
                         newWorkerVendorName: ''
@@ -4667,9 +4784,11 @@ export default function ProjectDetail() {
                       });
                     } else {
                       const w = (workersList || []).find(item => item._id === val);
+                      const matchedTrade = LABOUR_SUBDIVISIONS.find(t => w?.skill && t.toLowerCase() === w.skill.toLowerCase()) || purchaseForm.subDivision || 'General';
                       setPurchaseForm({
                         ...purchaseForm,
                         selectedWorkerId: val,
+                        subDivision: matchedTrade,
                         isNewWorker: false,
                         description: purchaseForm.description || (w ? `Labour payment: ${w.name}${w.skill ? ` (${w.skill})` : ''}` : '')
                       });
@@ -4701,12 +4820,15 @@ export default function ProjectDetail() {
                     </div>
                     <div className="form-group">
                       <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Skill / Trade *</label>
-                      <input
+                      <select
                         className="input"
-                        placeholder="e.g. ELECTRICAL LABOUR / CARPENTERY / WELDING"
-                        value={purchaseForm.newWorkerSkill}
-                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerSkill: e.target.value })}
-                      />
+                        value={purchaseForm.newWorkerSkill || purchaseForm.subDivision || 'General'}
+                        onChange={(e) => setPurchaseForm({ ...purchaseForm, newWorkerSkill: e.target.value, subDivision: e.target.value })}
+                      >
+                        {LABOUR_SUBDIVISIONS.map(trade => (
+                          <option key={trade} value={trade}>{trade}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="responsive-grid-3col" style={{ gap: '8px' }}>
@@ -4879,17 +5001,37 @@ export default function ProjectDetail() {
                       setPurchaseForm({ ...purchaseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
                     } else {
                       const item = (materials?.items || []).find(i => i._id === val);
-                      setPurchaseForm({ ...purchaseForm, selectedItemId: val, isNewMaterial: false, materialName: item?.itemName || '', materialUnit: item?.unit || 'Bags' });
+                      setPurchaseForm({
+                        ...purchaseForm,
+                        selectedItemId: val,
+                        isNewMaterial: false,
+                        materialName: item?.itemName || '',
+                        materialUnit: item?.unit || 'Bags',
+                        subDivision: item?.subDivision || purchaseForm.subDivision || 'General'
+                      });
                     }
                   }}
                 >
                   <option value="">— Select existing item to restock —</option>
                   {(materials?.items || []).map(item => (
                     <option key={item._id} value={item._id}>
-                      {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                      {item.itemName} [{item.subDivision || 'General'}] (Balance: {item.balance ?? 0} {item.unit || ''})
                     </option>
                   ))}
                   <option value="__new__">+ Register New Material Item</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Trade / Sub-Division *</label>
+                <select
+                  className="input"
+                  value={purchaseForm.subDivision || 'General'}
+                  onChange={(e) => setPurchaseForm({ ...purchaseForm, subDivision: e.target.value })}
+                >
+                  {MATERIAL_SUBDIVISIONS.map(trade => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
                 </select>
               </div>
 
@@ -5018,16 +5160,17 @@ export default function ProjectDetail() {
           </div>
 
           {(() => {
-            const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+            const OPTIONAL_INVOICE_PURCHASE = ['labour', 'contract_labour', 'Labour / Contractor Charges', 'Subcontractor & Services', 'tools_rental', 'rental', 'Rental', 'travel', 'Travel expenses', 'accommodation', 'Accommodation expenses', 'transportation', 'Transportation charges'];
+            const isInvoiceOptional = OPTIONAL_INVOICE_PURCHASE.includes(purchaseForm.category) || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
             return (
               <div className="form-group">
-                <label>Invoice File / Receipt Photo {isLabourPurchase ? '(Optional for Labour)' : '(REQUIRED) *'}</label>
+                <label>Invoice File / Receipt Photo {isInvoiceOptional ? '(Optional)' : '(REQUIRED) *'}</label>
                 <input
                   type="file"
                   className="input"
                   accept="image/*,application/pdf"
                   onChange={(e) => setPurchaseFile(e.target.files?.[0] || null)}
-                  required={!isLabourPurchase}
+                  required={!isInvoiceOptional}
                 />
                 {purchaseFile && (
                   <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
@@ -5069,17 +5212,9 @@ export default function ProjectDetail() {
                 });
               }}
             >
-              <option value="material">Material charges</option>
-              <option value="tools_rental">Rental Paid (Select Material / Tool from Inventory)</option>
-              <option value="transportation">Transportation charges</option>
-              <option value="labour">Labour charges</option>
-              <option value="fuel">Fuel expenses</option>
-              <option value="accommodation">Accommodation expenses</option>
-              <option value="tools">Tools charges</option>
-              <option value="stationery">Stationery</option>
-              <option value="travel">Travel expenses</option>
-              <option value="food">Food expenses</option>
-              <option value="custom">Custom expense</option>
+              {UNIFIED_EXPENSE_CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
             </select>
           </div>
 
@@ -5108,6 +5243,26 @@ export default function ProjectDetail() {
               </div>
 
               <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Labour Trade / Sub-Category *</label>
+                <select
+                  className="input"
+                  value={expenseForm.subDivision || 'General'}
+                  onChange={(e) => {
+                    const trade = e.target.value;
+                    setExpenseForm({
+                      ...expenseForm,
+                      subDivision: trade,
+                      ...(expenseForm.isNewWorker ? { newWorkerSkill: trade } : {})
+                    });
+                  }}
+                >
+                  {LABOUR_SUBDIVISIONS.map(trade => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Select Worker / Contractor or Create New</label>
                 <select
                   className="input"
@@ -5121,7 +5276,7 @@ export default function ProjectDetail() {
                         isNewWorker: true,
                         newWorkerName: '',
                         newWorkerPhone: '',
-                        newWorkerSkill: 'General',
+                        newWorkerSkill: expenseForm.subDivision || 'General',
                         newWorkerType: 'contractor',
                         newWorkerDailyRate: '',
                         newWorkerVendorName: ''
@@ -5134,9 +5289,11 @@ export default function ProjectDetail() {
                       });
                     } else {
                       const w = (workersList || []).find(item => item._id === val);
+                      const matchedTrade = LABOUR_SUBDIVISIONS.find(t => w?.skill && t.toLowerCase() === w.skill.toLowerCase()) || expenseForm.subDivision || 'General';
                       setExpenseForm({
                         ...expenseForm,
                         selectedWorkerId: val,
+                        subDivision: matchedTrade,
                         isNewWorker: false,
                         description: expenseForm.description || (w ? `Labour payment: ${w.name}${w.skill ? ` (${w.skill})` : ''}` : '')
                       });
@@ -5168,12 +5325,15 @@ export default function ProjectDetail() {
                     </div>
                     <div className="form-group">
                       <label style={{ fontWeight: 600, fontSize: '12px', color: '#0C4A6E' }}>Skill / Trade *</label>
-                      <input
+                      <select
                         className="input"
-                        placeholder="e.g. ELECTRICAL LABOUR / CARPENTERY / WELDING"
-                        value={expenseForm.newWorkerSkill}
-                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerSkill: e.target.value })}
-                      />
+                        value={expenseForm.newWorkerSkill || expenseForm.subDivision || 'General'}
+                        onChange={(e) => setExpenseForm({ ...expenseForm, newWorkerSkill: e.target.value, subDivision: e.target.value })}
+                      >
+                        {LABOUR_SUBDIVISIONS.map(trade => (
+                          <option key={trade} value={trade}>{trade}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="responsive-grid-3col" style={{ gap: '8px' }}>
@@ -5506,17 +5666,37 @@ export default function ProjectDetail() {
                       setExpenseForm({ ...expenseForm, selectedItemId: '', isNewMaterial: false, materialName: '', materialUnit: 'Bags' });
                     } else {
                       const item = (materials?.items || []).find(i => i._id === val);
-                      setExpenseForm({ ...expenseForm, selectedItemId: val, isNewMaterial: false, materialName: item?.itemName || '', materialUnit: item?.unit || 'Bags' });
+                      setExpenseForm({
+                        ...expenseForm,
+                        selectedItemId: val,
+                        isNewMaterial: false,
+                        materialName: item?.itemName || '',
+                        materialUnit: item?.unit || 'Bags',
+                        subDivision: item?.subDivision || expenseForm.subDivision || 'General'
+                      });
                     }
                   }}
                 >
                   <option value="">— Select existing item to restock —</option>
                   {(materials?.items || []).map(item => (
                     <option key={item._id} value={item._id}>
-                      {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                      {item.itemName} [{item.subDivision || 'General'}] (Balance: {item.balance ?? 0} {item.unit || ''})
                     </option>
                   ))}
                   <option value="__new__">+ Register New Material Item</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '12px' }}>Material Trade / Sub-Division *</label>
+                <select
+                  className="input"
+                  value={expenseForm.subDivision || 'General'}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, subDivision: e.target.value })}
+                >
+                  {MATERIAL_SUBDIVISIONS.map(trade => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
                 </select>
               </div>
 
@@ -5766,17 +5946,37 @@ export default function ProjectDetail() {
                   setMaterialForm({ ...materialForm, selectedItemId: '', isNewMaterial: false, itemName: '', unit: 'Bags' });
                 } else {
                   const item = (materials?.items || []).find(i => i._id === val);
-                  setMaterialForm({ ...materialForm, selectedItemId: val, isNewMaterial: false, itemName: item?.itemName || '', unit: item?.unit || 'Bags' });
+                  setMaterialForm({
+                    ...materialForm,
+                    selectedItemId: val,
+                    isNewMaterial: false,
+                    itemName: item?.itemName || '',
+                    unit: item?.unit || 'Bags',
+                    subDivision: item?.subDivision || materialForm.subDivision || 'General'
+                  });
                 }
               }}
             >
               <option value="">— Select existing item to restock —</option>
               {(materials?.items || []).map(item => (
                 <option key={item._id} value={item._id}>
-                  {item.itemName} (Balance: {item.balance ?? 0} {item.unit || ''})
+                  {item.itemName} [{item.subDivision || 'General'}] (Balance: {item.balance ?? 0} {item.unit || ''})
                 </option>
               ))}
               <option value="__new__">+ Register New Material Item</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Trade / Sub-Division *</label>
+            <select
+              className="input"
+              value={materialForm.subDivision || 'General'}
+              onChange={(e) => setMaterialForm({ ...materialForm, subDivision: e.target.value })}
+            >
+              {MATERIAL_SUBDIVISIONS.map(trade => (
+                <option key={trade} value={trade}>{trade}</option>
+              ))}
             </select>
           </div>
 
