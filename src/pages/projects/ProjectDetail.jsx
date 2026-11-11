@@ -685,12 +685,12 @@ export default function ProjectDetail() {
   const handleAddPurchase = async (e) => {
     e.preventDefault();
     if (isSubmittingPurchase) return;
-    if (!purchaseFile) {
+    const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental');
+    const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+    if (!isLabourPurchase && !purchaseFile) {
       alert('Invoice image/document is required!');
       return;
     }
-    const isRent = Boolean(purchaseForm.isRental || purchaseForm.category === 'Rental');
-    const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
     if (purchaseForm.isNewWorker && !purchaseForm.newWorkerName?.trim()) {
       alert('Please enter the new Worker / Contractor Name (or select an existing worker).');
       return;
@@ -731,7 +731,9 @@ export default function ProjectDetail() {
         : (purchaseForm.materialUnitCost || (purchaseForm.materialQuantity ? (Number(purchaseForm.amount) / Number(purchaseForm.materialQuantity)).toFixed(2) : purchaseForm.amount));
       formData.append('materialUnitCost', unitCost);
     }
-    formData.append('invoiceImage', purchaseFile);
+    if (purchaseFile) {
+      formData.append('invoiceImage', purchaseFile);
+    }
 
     try {
       setIsSubmittingPurchase(true);
@@ -835,8 +837,10 @@ export default function ProjectDetail() {
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (isSubmittingExpense) return;
-    if (!expenseFile) {
-      alert('Receipt image is mandatory for petty cash expenses!');
+    const OPTIONAL_RECEIPT_PETTY_CASH = ['labour', 'tools_rental', 'travel', 'accommodation', 'transportation'];
+    const isReceiptOptional = OPTIONAL_RECEIPT_PETTY_CASH.includes(expenseForm.category);
+    if (!isReceiptOptional && !expenseFile) {
+      alert('Receipt image is mandatory for this expense category!');
       return;
     }
 
@@ -860,7 +864,9 @@ export default function ProjectDetail() {
     formData.append('customCategoryName', expenseForm.customCategoryName);
     formData.append('description', expenseForm.description || (isRentalPaid && expenseForm.materialName ? `Rental paid: ${expenseForm.materialName}` : ''));
     formData.append('amount', expenseForm.amount);
-    formData.append('receiptImage', expenseFile);
+    if (expenseFile) {
+      formData.append('receiptImage', expenseFile);
+    }
     formData.append('isMaterialPurchase', isMat ? 'true' : 'false');
     formData.append('isRentalPayment', isRentalPaid ? 'true' : 'false');
     if (expenseForm.category === 'labour') {
@@ -2706,7 +2712,7 @@ export default function ProjectDetail() {
                               </span>
                               {wName && (
                                 <div style={{ fontSize: '11px', color: '#0369A1', fontWeight: 600, marginTop: '4px' }}>
-                                  👷 {wName}{wSkill ? ` (${wSkill})` : ''}
+                                  {wName}{wSkill ? ` (${wSkill})` : ''}
                                 </div>
                               )}
                             </td>
@@ -2956,7 +2962,7 @@ export default function ProjectDetail() {
                             )}
                             {(t.workerName || t.linkedWorker?.name) && (
                               <div style={{ fontSize: '11px', color: '#0369A1', fontWeight: 600, marginTop: '2px' }}>
-                                👷 {t.workerName || t.linkedWorker?.name}
+                                {t.workerName || t.linkedWorker?.name}
                                 {(t.workerSkill || t.linkedWorker?.skill) ? ` (${t.workerSkill || t.linkedWorker?.skill})` : ''}
                               </div>
                             )}
@@ -4628,7 +4634,7 @@ export default function ProjectDetail() {
               gap: '10px'
             }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369A1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>👷 Link to Project Worker / Contractor (Optional)</span>
+                <span>Link to Project Worker / Contractor (Optional)</span>
                 <span style={{ fontSize: '11px', backgroundColor: '#E0F2FE', color: '#0284C7', padding: '2px 8px', borderRadius: '12px' }}>
                   Aggregates in Labour Charge — Employee Total
                 </span>
@@ -5011,21 +5017,26 @@ export default function ProjectDetail() {
             />
           </div>
 
-          <div className="form-group">
-            <label>Invoice File / Receipt Photo (REQUIRED) *</label>
-            <input
-              type="file"
-              className="input"
-              accept="image/*,application/pdf"
-              onChange={(e) => setPurchaseFile(e.target.files?.[0] || null)}
-              required
-            />
-            {purchaseFile && (
-              <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
-                ✓ Selected file: <strong>{purchaseFile.name}</strong> ({(purchaseFile.size / 1024).toFixed(1)} KB)
+          {(() => {
+            const isLabourPurchase = purchaseForm.category === 'Labour / Contractor Charges' || purchaseForm.category === 'Subcontractor & Services' || Boolean(purchaseForm.selectedWorkerId || purchaseForm.isNewWorker);
+            return (
+              <div className="form-group">
+                <label>Invoice File / Receipt Photo {isLabourPurchase ? '(Optional for Labour)' : '(REQUIRED) *'}</label>
+                <input
+                  type="file"
+                  className="input"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setPurchaseFile(e.target.files?.[0] || null)}
+                  required={!isLabourPurchase}
+                />
+                {purchaseFile && (
+                  <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
+                    ✓ Selected file: <strong>{purchaseFile.name}</strong> ({(purchaseFile.size / 1024).toFixed(1)} KB)
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </form>
       </Modal>
 
@@ -5090,7 +5101,7 @@ export default function ProjectDetail() {
               gap: '10px'
             }}>
               <div style={{ fontSize: '13px', fontWeight: 700, color: '#0369A1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>👷 Link to Project Worker / Contractor (Optional)</span>
+                <span>Link to Project Worker / Contractor (Optional)</span>
                 <span style={{ fontSize: '11px', backgroundColor: '#E0F2FE', color: '#0284C7', padding: '2px 8px', borderRadius: '12px' }}>
                   Aggregates in Labour Charge — Employee Total
                 </span>
@@ -5621,10 +5632,27 @@ export default function ProjectDetail() {
             />
           </div>
 
-          <div className="form-group">
-            <label>Receipt Photo / File (MANDATORY) *</label>
-            <input type="file" className="input" accept="image/*,application/pdf" onChange={(e) => setExpenseFile(e.target.files[0])} required />
-          </div>
+          {(() => {
+            const OPTIONAL_RECEIPT_PETTY_CASH = ['labour', 'tools_rental', 'travel', 'accommodation', 'transportation'];
+            const isReceiptOptional = OPTIONAL_RECEIPT_PETTY_CASH.includes(expenseForm.category);
+            return (
+              <div className="form-group">
+                <label>Receipt Photo / File {isReceiptOptional ? '(Optional)' : '(MANDATORY) *'}</label>
+                <input
+                  type="file"
+                  className="input"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setExpenseFile(e.target.files?.[0] || null)}
+                  required={!isReceiptOptional}
+                />
+                {expenseFile && (
+                  <div style={{ fontSize: '12px', color: '#16A34A', marginTop: '4px' }}>
+                    ✓ Selected file: <strong>{expenseFile.name}</strong> ({(expenseFile.size / 1024).toFixed(1)} KB)
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </form>
       </Modal>
 
