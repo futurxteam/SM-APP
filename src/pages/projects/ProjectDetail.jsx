@@ -113,7 +113,7 @@ export default function ProjectDetail() {
     subDivision: 'General',
     description: '',
     amount: '',
-    isMaterialPurchase: true,
+    isMaterialPurchase: false,
     isRental: false,
     useRentalCalc: false,
     perDayRental: '',
@@ -153,7 +153,7 @@ export default function ProjectDetail() {
     customCategoryName: '',
     description: '',
     amount: '',
-    isMaterialPurchase: true,
+    isMaterialPurchase: false,
     useRentalCalc: false,
     perDayRental: '',
     acquiredDate: dayjs().format('YYYY-MM-DD'),
@@ -796,7 +796,7 @@ export default function ProjectDetail() {
         subDivision: 'General',
         description: '',
         amount: '',
-        isMaterialPurchase: true,
+        isMaterialPurchase: false,
         isRental: false,
         useRentalCalc: false,
         perDayRental: '',
@@ -967,7 +967,7 @@ export default function ProjectDetail() {
         customCategoryName: '',
         description: '',
         amount: '',
-        isMaterialPurchase: true,
+        isMaterialPurchase: false,
         useRentalCalc: false,
         perDayRental: '',
         acquiredDate: dayjs().format('YYYY-MM-DD'),
@@ -4695,7 +4695,7 @@ export default function ProjectDetail() {
                     ...purchaseForm,
                     category: cat,
                     isRental: isRentCat,
-                    isMaterialPurchase: isMat ? true : false,
+                    isMaterialPurchase: false,
                     amount: nextAmt,
                     materialName: isMat ? purchaseForm.materialName : '',
                     ...(!isMat ? { selectedItemId: '', isNewMaterial: false, materialQuantity: '', materialUnitCost: '' } : {}),
@@ -5222,7 +5222,7 @@ export default function ProjectDetail() {
                 setExpenseForm({
                   ...expenseForm,
                   category: cat,
-                  isMaterialPurchase: cat === 'material' ? true : false,
+                  isMaterialPurchase: false,
                   ...((cat !== 'material' && cat !== 'tools_rental')
                     ? { selectedItemId: '', isNewMaterial: false, materialName: '', materialQuantity: '', materialUnitCost: '', useRentalCalc: false, perDayRental: '', returnDate: '' }
                     : {}),
@@ -5662,7 +5662,7 @@ export default function ProjectDetail() {
                   checked={Boolean(expenseForm.isMaterialPurchase)}
                   onChange={(e) => setExpenseForm({ ...expenseForm, isMaterialPurchase: e.target.checked })}
                 />
-                <span>📦 Track in Material Inventory (Petty Cash Sourced)</span>
+                <span> Track in Material Inventory (Petty Cash Sourced)</span>
               </div>
               <span style={{
                 fontSize: '11px',
