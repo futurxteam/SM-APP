@@ -45,6 +45,7 @@ export default function ProjectLocationSection({
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [liveRemainingMs, setLiveRemainingMs] = useState(0);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [hasLoadedRequests, setHasLoadedRequests] = useState(false);
 
   // Supervisor request modal state
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
@@ -87,6 +88,7 @@ export default function ProjectLocationSection({
       console.warn('Failed to load location update requests', err);
     } finally {
       setIsLoadingRequests(false);
+      setHasLoadedRequests(true);
     }
   }, [projectId]);
 
@@ -152,7 +154,12 @@ export default function ProjectLocationSection({
       setRequestReason('');
       await loadRequests();
     } catch (err) {
-      setRequestError(err.response?.data?.message || 'Failed to submit location update request.');
+      if (err.response?.status === 409) {
+        setIsRequestModalOpen(false);
+        await loadRequests();
+      } else {
+        setRequestError(err.response?.data?.message || 'Failed to submit location update request.');
+      }
     } finally {
       setIsSubmittingRequest(false);
     }
@@ -480,7 +487,12 @@ export default function ProjectLocationSection({
         {/* SUPERVISOR CONTROLS (only when location already exists) */}
         {hasCoords && isSiteSupervisor() && (
           <div style={{ paddingTop: '8px', borderTop: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {canSupUpdateNow ? (
+            {!hasLoadedRequests && isLoadingRequests ? (
+              <div style={{ fontSize: '12px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <RefreshCw size={13} className="spin-icon" />
+                <span>Checking location update status...</span>
+              </div>
+            ) : canSupUpdateNow ? (
               <div style={{
                 backgroundColor: '#F0FDF4',
                 border: '1.5px solid #86EFAC',
@@ -495,7 +507,7 @@ export default function ProjectLocationSection({
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <CheckCircle2 size={15} color="#16A34A" />
-                    Location Update Approved by Admin
+                    Location Update Window Open (Approved by Admin)
                   </div>
                   <div style={{ fontSize: '12px', color: '#15803D', marginTop: '2px' }}>
                     <Clock size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: '4px' }} />
@@ -510,29 +522,45 @@ export default function ProjectLocationSection({
                   onClick={() => setIsCoordModalOpen(true)}
                   style={{ backgroundColor: '#16A34A', borderColor: '#16A34A' }}
                 >
-                  Update Site Location
+                  Open Update Window
                 </Button>
               </div>
             ) : pendingRequest ? (
               <div style={{
                 backgroundColor: '#FFFBEB',
-                border: '1px solid #FDE68A',
+                border: '1.5px solid #FDE68A',
                 borderRadius: '8px',
                 padding: '10px 12px',
                 fontSize: '12px',
                 color: '#92400E',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
               }}>
-                <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Clock size={14} color="#D97706" />
-                  Location Update Request Pending Admin Approval
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 220px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={14} color="#D97706" />
+                    Already Requested — Wait for Admin Response
+                  </div>
+                  <div>Reason: &ldquo;{pendingRequest.reason}&rdquo;</div>
+                  <div style={{ fontSize: '11px', color: '#B45309' }}>
+                    Submitted {dayjs(pendingRequest.createdAt).format('DD MMM YYYY, hh:mm A')}. Once approved, the 24-hour update window will unlock here.
+                  </div>
                 </div>
-                <div>Reason: &ldquo;{pendingRequest.reason}&rdquo;</div>
-                <div style={{ fontSize: '11px', color: '#B45309' }}>
-                  Submitted {dayjs(pendingRequest.createdAt).format('DD MMM YYYY, hh:mm A')}. Once approved, you will have 24 hours to update the location.
-                </div>
+                <span style={{
+                  backgroundColor: '#FEF3C7',
+                  color: '#B45309',
+                  border: '1px solid #FCD34D',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                }}>
+                  Already Requested
+                </span>
               </div>
             ) : isApprovalActive ? (
               <div style={{
@@ -545,19 +573,55 @@ export default function ProjectLocationSection({
               }}>
                 A 24-hour location update window is currently active for co-supervisor <strong>{activeApproval.requestedBy?.name || 'Supervisor'}</strong> (expires {dayjs(activeApproval.expiresAt).format('DD MMM, hh:mm A')}).
               </div>
+            ) : latestClosedRequest?.status === 'rejected' ? (
+              <div style={{
+                backgroundColor: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
+              }}>
+                <div style={{ fontSize: '12px', color: '#991B1B', flex: '1 1 220px' }}>
+                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <XCircle size={14} color="#DC2626" />
+                    Previous Request Rejected by Admin
+                  </div>
+                  {latestClosedRequest.reviewRemarks && (
+                    <div style={{ marginTop: '2px' }}>Admin remark: &ldquo;{latestClosedRequest.reviewRemarks}&rdquo;</div>
+                  )}
+                  <div style={{ fontSize: '11px', color: '#B91C1C', marginTop: '2px' }}>
+                    You can send a new request for Admin approval.
+                  </div>
+                </div>
+                {!isProjectLocked && (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    icon={Send}
+                    onClick={() => {
+                      setRequestError(null);
+                      setRequestReason('');
+                      setIsRequestModalOpen(true);
+                    }}
+                  >
+                    Send Request
+                  </Button>
+                )}
+              </div>
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ fontSize: '12px', color: '#64748B', flex: '1 1 220px' }}>
-                  {latestClosedRequest?.status === 'rejected' ? (
-                    <span style={{ color: '#B91C1C' }}>
-                      Last request rejected{latestClosedRequest.reviewRemarks ? `: "${latestClosedRequest.reviewRemarks}"` : ''}.
-                    </span>
-                  ) : latestClosedRequest?.status === 'expired' ? (
+                  {latestClosedRequest?.status === 'expired' ? (
                     <span style={{ color: '#B45309' }}>
-                      Previous 24-hour approval window expired without changes. Request again to update.
+                      Previous 24-hour update window expired without changes. Send a new request to update.
                     </span>
                   ) : (
-                    <span>Location changes require Admin approval (valid for 24 hours once approved).</span>
+                    <span>Location changes require Admin approval (24-hour update window once approved).</span>
                   )}
                 </div>
 
@@ -573,7 +637,7 @@ export default function ProjectLocationSection({
                       setIsRequestModalOpen(true);
                     }}
                   >
-                    Request Location Update
+                    Send Request
                   </Button>
                 )}
               </div>
