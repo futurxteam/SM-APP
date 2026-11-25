@@ -1382,6 +1382,11 @@ export default function ProjectDetail() {
     };
   }, [attendanceData]);
 
+  const unlockedPettyCashDateSet = useMemo(
+    () => new Set((pettyCashEditAccess.unlockedDates || []).map((u) => u.targetDate)),
+    [pettyCashEditAccess.unlockedDates]
+  );
+
   if (isLoading || !project) {
     return <LoadingSpinner size="lg" text="Loading project details & workspace..." style={{ minHeight: '60vh' }} />;
   }
@@ -1429,10 +1434,6 @@ export default function ProjectDetail() {
 
   const todayDateStr = dayjs().format('YYYY-MM-DD');
   const isAttendanceReadOnly = isSiteSupervisor() && attendanceDate !== todayDateStr && !attendanceEditAccess.canSupervisorEditDate;
-  const unlockedPettyCashDateSet = useMemo(
-    () => new Set((pettyCashEditAccess.unlockedDates || []).map((u) => u.targetDate)),
-    [pettyCashEditAccess.unlockedDates]
-  );
   const canEditExpenseTx = (tx) => {
     if (!tx || tx.type !== 'expense' || pettyCash?.isClosed) return false;
     if (tx.description?.includes('[Attendance]') || tx.description?.includes('Labour wage payments on')) return false;
