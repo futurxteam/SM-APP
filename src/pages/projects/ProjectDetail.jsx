@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import LocationTrackingTab from '../../components/location/LocationTrackingTab';
+import ProjectLocationSection from '../../components/location/ProjectLocationSection';
 import ScheduleTab from '../../components/projects/ScheduleTab';
 import InteractiveLocationPicker from '../../components/location/InteractiveLocationPicker';
 import ExportReportModal from '../../components/common/ExportReportModal';
@@ -1718,18 +1719,10 @@ export default function ProjectDetail() {
                   ? project.assignedSupervisors.map(s => s.name).join(', ')
                   : (project.assignedSupervisor?.name || 'Unassigned')}
               </div>
-              <div style={{ gridColumn: 'span 2' }}>
-                <strong>Site Geofence:</strong>{' '}
-                {project.coordinates?.latitude ? (
-                  <span style={{ color: '#059669', fontWeight: 600 }}>
-                    {project.coordinates.latitude.toFixed(5)}, {project.coordinates.longitude.toFixed(5)} ({project.coordinates.radiusMeters || 200}m radius perimeter)
-                  </span>
-                ) : (
-                  <span style={{ color: '#DC2626', fontWeight: 600 }}>
-                    ⚠️ Not Configured (Supervisor will be prompted on login)
-                  </span>
-                )}
-              </div>
+              <ProjectLocationSection
+                project={project}
+                onProjectUpdated={loadProjectData}
+              />
             </div>
           </Card>
         </div>

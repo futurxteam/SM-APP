@@ -5,6 +5,7 @@ import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import TrackingMap from './TrackingMap';
 import ProjectCoordinateModal from './ProjectCoordinateModal';
+import ProjectLocationSection from './ProjectLocationSection';
 import ExportReportModal from '../common/ExportReportModal';
 import GeoAttendanceSettingsModal from '../projects/GeoAttendanceSettingsModal';
 import api from '../../services/api';
@@ -147,6 +148,18 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
           </div>
         </div>
       </Card>
+
+      {/* Pending Supervisor Location Update Requests & History */}
+      {project && (
+        <ProjectLocationSection
+          project={project}
+          onProjectUpdated={() => {
+            loadLocationLogs();
+            if (onProjectUpdated) onProjectUpdated();
+          }}
+          adminPanelOnly
+        />
+      )}
 
       {/* Geo-Attendance Paused Banner */}
       {project?.geoAttendance?.enabled === false && (

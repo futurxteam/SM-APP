@@ -9,6 +9,7 @@ import ExpenseDonutChart from '../../components/charts/ExpenseDonutChart';
 import GanttTimelineChart from '../../components/charts/GanttTimelineChart';
 import DailyExpenditureReport from '../../components/dashboard/DailyExpenditureReport';
 import ExportReportModal from '../../components/common/ExportReportModal';
+import LocationRequestsModal from '../../components/location/LocationRequestsModal';
 import {
   Building2,
   IndianRupee,
@@ -51,6 +52,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isGeoExportOpen, setIsGeoExportOpen] = useState(false);
+  const [isLocationRequestsOpen, setIsLocationRequestsOpen] = useState(false);
 
   const loadDashboardData = async (projId = selectedProjectId, isInitial = false) => {
     if (!isInitial) setIsRefreshing(true);
@@ -110,7 +112,7 @@ export default function Dashboard() {
     return <LoadingSpinner size="lg" text="Loading dashboard analytics & project metrics..." style={{ minHeight: '60vh' }} />;
   }
 
-  const { projects, financials, pendingRefillRequestsCount, projectBreakdown = [] } = overview || {};
+  const { projects, financials, pendingRefillRequestsCount, pendingLocationRequestsCount, projectBreakdown = [] } = overview || {};
 
   // Find active project if single project is selected
   const activeSelectedProject = selectedProjectId !== 'all'
@@ -261,6 +263,42 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Pending Location Update Requests Banner (Super Admin) */}
+      {isSuperAdmin() && pendingLocationRequestsCount > 0 && (
+        <div style={{
+          backgroundColor: '#EFF6FF',
+          border: '1px solid #93C5FD',
+          borderRadius: 'var(--radius-md)',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          color: '#1E3A8A'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <MapPin size={20} color="#2563EB" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '14px' }}>
+                {pendingLocationRequestsCount} Site Location Update Request(s) Pending Approval
+              </div>
+              <div style={{ fontSize: '12px' }}>
+                Site supervisors have requested permission to update project coordinates (24-hour edit window once approved).
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsLocationRequestsOpen(true)}
+            className="btn btn-sm"
+            style={{ backgroundColor: '#2563EB', color: '#FFF' }}
+          >
+            Review Location Requests
+          </button>
+        </div>
+      )}
 
       {/* Action Alerts / Pending Actions Banner */}
       {pendingRefillRequestsCount > 0 && (
@@ -651,6 +689,15 @@ export default function Dashboard() {
         projectId={selectedProjectId !== 'all' ? selectedProjectId : ''}
         defaultProjectId={selectedProjectId !== 'all' ? selectedProjectId : 'all'}
       />
+
+      {/* Pending Site Location Update Requests Modal (Super Admin) */}
+      {isSuperAdmin() && (
+        <LocationRequestsModal
+          isOpen={isLocationRequestsOpen}
+          onClose={() => setIsLocationRequestsOpen(false)}
+          onUpdated={() => loadDashboardData(selectedProjectId, false)}
+        />
+      )}
     </div>
   );
 }
