@@ -8,6 +8,7 @@ import {
   UserCheck,
   Activity,
   Briefcase,
+  ShieldCheck,
   LogOut,
   X
 } from 'lucide-react';
@@ -176,6 +177,26 @@ export default function Sidebar({ isOpen = false, onClose }) {
             }}>
               Administration
             </div>
+
+            <NavLink
+              to="/admin/requests"
+              onClick={handleLinkClick}
+              style={({ isActive }) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: 500,
+                textDecoration: 'none',
+                color: isActive ? 'var(--color-sidebar-text-active)' : 'var(--color-sidebar-text)',
+                backgroundColor: isActive ? 'var(--color-sidebar-active-bg)' : 'transparent',
+              })}
+            >
+              <ShieldCheck size={18} />
+              <span>Approval Requests</span>
+            </NavLink>
 
             <NavLink
               to="/admin/users"

@@ -23,6 +23,8 @@ import InteractiveLocationPicker from '../../components/location/InteractiveLoca
 import ExportReportModal from '../../components/common/ExportReportModal';
 import SeedDataModal from '../../components/projects/SeedDataModal';
 import GeoAttendanceSettingsModal from '../../components/projects/GeoAttendanceSettingsModal';
+import EditAccessBanner from '../../components/projects/EditAccessBanner';
+import EditExpenseModal from '../../components/projects/EditExpenseModal';
 
 const MATERIAL_SUBDIVISIONS = [
   'Civil',
@@ -80,6 +82,10 @@ export default function ProjectDetail() {
 
   // Module States
   const [attendanceDate, setAttendanceDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [attendanceEditAccess, setAttendanceEditAccess] = useState({ canSupervisorEditDate: false, unlockedDates: [] });
+  const [pettyCashEditAccess, setPettyCashEditAccess] = useState({ canSupervisorEditDate: false, unlockedDates: [] });
+  const [expenseTargetDate, setExpenseTargetDate] = useState('');
+  const [editingExpenseTx, setEditingExpenseTx] = useState(null);
 
   const [attendanceData, setAttendanceData] = useState({ entries: [] });
   const [labourSummary, setLabourSummary] = useState([]);
@@ -918,6 +924,9 @@ export default function ProjectDetail() {
     formData.append('customCategoryName', expenseForm.customCategoryName);
     formData.append('description', expenseForm.description || (isRentalPaid && expenseForm.materialName ? `Rental paid: ${expenseForm.materialName}` : ''));
     formData.append('amount', expenseForm.amount);
+    if (expenseTargetDate) {
+      formData.append('date', expenseTargetDate);
+    }
     if (expenseFile) {
       formData.append('receiptImage', expenseFile);
     }
@@ -962,6 +971,7 @@ export default function ProjectDetail() {
       await api.post(`/projects/${projectId}/pettycash/expenses`, formData);
       const createdNewWorker = Boolean(expenseForm.category === 'labour' && expenseForm.isNewWorker && expenseForm.newWorkerName?.trim());
       setIsExpenseModalOpen(false);
+      setExpenseTargetDate('');
       setExpenseForm({
         category: 'material',
         subDivision: 'General',
@@ -1417,6 +1427,21 @@ export default function ProjectDetail() {
     return { shortText: remTxt, detailValue: remTxt, color: '#64748B', isHighlighted: false };
   })();
 
+  const todayDateStr = dayjs().format('YYYY-MM-DD');
+  const isAttendanceReadOnly = isSiteSupervisor() && attendanceDate !== todayDateStr && !attendanceEditAccess.canSupervisorEditDate;
+  const unlockedPettyCashDateSet = useMemo(
+    () => new Set((pettyCashEditAccess.unlockedDates || []).map((u) => u.targetDate)),
+    [pettyCashEditAccess.unlockedDates]
+  );
+  const canEditExpenseTx = (tx) => {
+    if (!tx || tx.type !== 'expense' || pettyCash?.isClosed) return false;
+    if (tx.description?.includes('[Attendance]') || tx.description?.includes('Labour wage payments on')) return false;
+    if (!isSiteSupervisor()) return true;
+    const txDateStr = dayjs(tx.date).format('YYYY-MM-DD');
+    if (txDateStr === todayDateStr) return true;
+    return unlockedPettyCashDateSet.has(txDateStr);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Back Button & Project Banner Header */}
@@ -1827,6 +1852,17 @@ export default function ProjectDetail() {
           {/* SUBTAB 1: DAILY ATTENDANCE */}
           {attendanceSubTab === 'daily' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Past-Date Attendance Edit Approval Banner */}
+              <EditAccessBanner
+                projectId={projectId}
+                projectStatus={project?.status}
+                module="attendance"
+                targetDate={attendanceDate}
+                onSelectDate={(d) => setAttendanceDate(d)}
+                onAccessChange={setAttendanceEditAccess}
+                onApprovedOrUpdated={loadAttendance}
+              />
+
               {/* Daily Attendance Summary Cards */}
               <div className="kpi-grid-4">
                 <Card className="kpi-compact-card">
@@ -1868,6 +1904,7 @@ export default function ProjectDetail() {
 
               <Card>
                 {/* Search Bar & Action Buttons */}
+                {!isAttendanceReadOnly && (
                 <div className="mobile-flex-wrap" style={{ alignItems: 'flex-start', marginBottom: '16px' }}>
                   {/* Worker Search Bar with Autocomplete Dropdown */}
                   <div style={{ position: 'relative', flex: 1, minWidth: '240px', width: '100%', maxWidth: '520px' }}>
@@ -2054,10 +2091,13 @@ export default function ProjectDetail() {
                       loadingText="Saving Record..."
                       onClick={handleSaveAttendance}
                     >
-                      Save Today's Record
+                      {attendanceDate === todayDateStr
+                        ? "Save Today's Record"
+                        : `Save Record (${dayjs(attendanceDate).format('DD MMM YYYY')})`}
                     </Button>
                   </div>
                 </div>
+                )}
 
                 {/* Attendance Table */}
                 {isAttendanceLoading ? (
@@ -2113,6 +2153,7 @@ export default function ProjectDetail() {
                                         className="input"
                                         style={{ width: '90px', padding: '6px' }}
                                         value={entry.timeIn || '09:00'}
+                                        disabled={isAttendanceReadOnly}
                                         onChange={(e) => {
                                           const newEntries = [...attendanceData.entries];
                                           newEntries[idx].timeIn = e.target.value;
@@ -2125,6 +2166,7 @@ export default function ProjectDetail() {
                                         className="input"
                                         style={{ width: '90px', padding: '6px' }}
                                         value={entry.timeOut || '18:00'}
+                                        disabled={isAttendanceReadOnly}
                                         onChange={(e) => {
                                           const newEntries = [...attendanceData.entries];
                                           newEntries[idx].timeOut = e.target.value;
@@ -2137,6 +2179,7 @@ export default function ProjectDetail() {
                                         className="input"
                                         style={{ width: '120px', padding: '6px' }}
                                         value={entry.dutyType || 'full_day'}
+                                        disabled={isAttendanceReadOnly}
                                         onChange={(e) => {
                                           const newEntries = [...attendanceData.entries];
                                           newEntries[idx].dutyType = e.target.value;
@@ -2157,6 +2200,7 @@ export default function ProjectDetail() {
                                         style={{ width: '110px', padding: '6px', fontWeight: 600, color: '#059669' }}
                                         value={entry.amountPaid ?? ''}
                                         placeholder="0"
+                                        disabled={isAttendanceReadOnly}
                                         onChange={(e) => {
                                           const newEntries = [...attendanceData.entries];
                                           newEntries[idx].amountPaid = e.target.value;
@@ -2170,6 +2214,7 @@ export default function ProjectDetail() {
                                         style={{ minWidth: '130px', padding: '6px' }}
                                         value={entry.remarks || ''}
                                         placeholder="e.g. Electrical work"
+                                        disabled={isAttendanceReadOnly}
                                         onChange={(e) => {
                                           const newEntries = [...attendanceData.entries];
                                           newEntries[idx].remarks = e.target.value;
@@ -2178,15 +2223,19 @@ export default function ProjectDetail() {
                                       />
                                     </td>
                                     <td>
-                                      <button
-                                        className="btn btn-sm btn-danger"
-                                        onClick={() => {
-                                          const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
-                                          setAttendanceData({ ...attendanceData, entries: newEntries });
-                                        }}
-                                      >
-                                        Remove
-                                      </button>
+                                      {!isAttendanceReadOnly ? (
+                                        <button
+                                          className="btn btn-sm btn-danger"
+                                          onClick={() => {
+                                            const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
+                                            setAttendanceData({ ...attendanceData, entries: newEntries });
+                                          }}
+                                        >
+                                          Remove
+                                        </button>
+                                      ) : (
+                                        <span style={{ fontSize: '11px', color: '#94A3B8' }}>Locked</span>
+                                      )}
                                     </td>
                                   </tr>
                                 );
@@ -2221,25 +2270,27 @@ export default function ProjectDetail() {
                                   <span className="badge" style={{ backgroundColor: '#EEF2FF', color: '#4338CA', fontWeight: 700, fontSize: '12px' }}>
                                     {worker.dailyRate > 0 ? `₹${worker.dailyRate}/day` : (worker.workerType === 'contractor' || worker.workerType === 'contract') ? 'Contractor' : worker.workerType === 'permanent' ? 'Permanent' : '—'}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
-                                      setAttendanceData({ ...attendanceData, entries: newEntries });
-                                    }}
-                                    style={{
-                                      background: '#FEE2E2',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      color: '#DC2626',
-                                      fontWeight: 700,
-                                      padding: '4px 8px',
-                                      cursor: 'pointer',
-                                      fontSize: '11px'
-                                    }}
-                                  >
-                                    Remove
-                                  </button>
+                                  {!isAttendanceReadOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newEntries = attendanceData.entries.filter((_, i) => i !== idx);
+                                        setAttendanceData({ ...attendanceData, entries: newEntries });
+                                      }}
+                                      style={{
+                                        background: '#FEE2E2',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        color: '#DC2626',
+                                        fontWeight: 700,
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: '11px'
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
@@ -2250,6 +2301,7 @@ export default function ProjectDetail() {
                                     className="input"
                                     style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.timeIn || '09:00'}
+                                    disabled={isAttendanceReadOnly}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].timeIn = e.target.value;
@@ -2263,6 +2315,7 @@ export default function ProjectDetail() {
                                     className="input"
                                     style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.timeOut || '18:00'}
+                                    disabled={isAttendanceReadOnly}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].timeOut = e.target.value;
@@ -2279,6 +2332,7 @@ export default function ProjectDetail() {
                                     className="input"
                                     style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                     value={entry.dutyType || 'full_day'}
+                                    disabled={isAttendanceReadOnly}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].dutyType = e.target.value;
@@ -2300,6 +2354,7 @@ export default function ProjectDetail() {
                                     style={{ width: '100%', padding: '6px 8px', fontSize: '12px', fontWeight: 700, color: '#059669' }}
                                     value={entry.amountPaid ?? ''}
                                     placeholder="0"
+                                    disabled={isAttendanceReadOnly}
                                     onChange={(e) => {
                                       const newEntries = [...attendanceData.entries];
                                       newEntries[idx].amountPaid = e.target.value;
@@ -2316,6 +2371,7 @@ export default function ProjectDetail() {
                                   style={{ width: '100%', padding: '6px 8px', fontSize: '12px' }}
                                   value={entry.remarks || ''}
                                   placeholder="e.g. Electrical work, site painting..."
+                                  disabled={isAttendanceReadOnly}
                                   onChange={(e) => {
                                     const newEntries = [...attendanceData.entries];
                                     newEntries[idx].remarks = e.target.value;
@@ -2960,12 +3016,47 @@ export default function ProjectDetail() {
                     <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Refill Petty Cash</Button>
                   )
                 )}
-                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); if (workersList.length === 0) loadProjectWorkers(); setIsExpenseModalOpen(true); }}>Add Expense</Button>
+                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); if (workersList.length === 0) loadProjectWorkers(); setExpenseTargetDate(''); setIsExpenseModalOpen(true); }}>Add Expense</Button>
+                {(() => {
+                  const effectivePastDate = ledgerDate || (ledgerFilter === 'yesterday' ? dayjs().subtract(1, 'day').format('YYYY-MM-DD') : '');
+                  if (effectivePastDate && effectivePastDate < todayDateStr && (!isSiteSupervisor() || pettyCashEditAccess.canSupervisorEditDate)) {
+                    return (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={Plus}
+                        style={{ backgroundColor: '#16A34A', borderColor: '#16A34A' }}
+                        onClick={() => {
+                          if (!materials) loadMaterials();
+                          if (workersList.length === 0) loadProjectWorkers();
+                          setExpenseTargetDate(effectivePastDate);
+                          setIsExpenseModalOpen(true);
+                        }}
+                      >
+                        Add Expense ({dayjs(effectivePastDate).format('DD MMM')})
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
                 <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); setLedgerPage(1); }}>
                   <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
                 </select>
                 <input type="date" className="input" style={{ width: '145px', padding: '5px 8px' }} value={ledgerDate} onChange={(e) => { setLedgerDate(e.target.value); setLedgerPage(1); }} />
               </div>
+            </div>
+
+            {/* Past-Date Petty Cash Edit Approval Banner */}
+            <div style={{ marginBottom: '14px' }}>
+              <EditAccessBanner
+                projectId={projectId}
+                projectStatus={project?.status}
+                module="petty_cash"
+                targetDate={ledgerDate || (ledgerFilter === 'yesterday' ? dayjs().subtract(1, 'day').format('YYYY-MM-DD') : '')}
+                onSelectDate={(d) => { setLedgerDate(d); setLedgerPage(1); }}
+                onAccessChange={setPettyCashEditAccess}
+                onApprovedOrUpdated={loadPettyCash}
+              />
             </div>
 
             {/* Desktop Table View */}
@@ -2982,11 +3073,12 @@ export default function ProjectDetail() {
                       <th>Amount (₹)</th>
                       <th>Receipt</th>
                       <th>Recorded By</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ledgerTransactions.length === 0 ? (
-                      <tr><td colSpan="7" style={{ textAlign: 'center', color: '#94A3B8' }}>No transactions recorded.</td></tr>
+                      <tr><td colSpan="8" style={{ textAlign: 'center', color: '#94A3B8' }}>No transactions recorded.</td></tr>
                     ) : (
                       ledgerTransactions.map((t, idx) => (
                         <tr key={idx}>
@@ -3044,6 +3136,20 @@ export default function ProjectDetail() {
                             <div style={{ fontWeight: 600, color: '#1E293B' }}>{t.addedBy?.name || 'System/Admin'}</div>
                             {t.addedBy?.role && (
                               <div style={{ fontSize: '11px', color: '#64748B' }}>{t.addedBy.role.replace('_', ' ')}</div>
+                            )}
+                          </td>
+                          <td>
+                            {canEditExpenseTx(t) ? (
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                style={{ padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                onClick={() => setEditingExpenseTx(t)}
+                              >
+                                <Edit3 size={12} /> Edit
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '11px', color: '#94A3B8' }}>—</span>
                             )}
                           </td>
                         </tr>
@@ -3327,6 +3433,31 @@ export default function ProjectDetail() {
                     </div>
                   ) : null}
 
+                  {/* Edit Expense button (today until 11:59 PM, or approved past-date 24h window) */}
+                  {canEditExpenseTx(selectedTransactionDetail) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingExpenseTx(selectedTransactionDetail);
+                        setSelectedTransactionDetail(null);
+                      }}
+                      className="btn btn-primary"
+                      style={{
+                        width: '100%',
+                        marginTop: '16px',
+                        height: '42px',
+                        borderRadius: '12px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Edit3 size={15} /> Edit Expense
+                    </button>
+                  )}
+
                   {/* Done button */}
                   <button
                     type="button"
@@ -3334,7 +3465,7 @@ export default function ProjectDetail() {
                     className="btn btn-secondary"
                     style={{
                       width: '100%',
-                      marginTop: '20px',
+                      marginTop: canEditExpenseTx(selectedTransactionDetail) ? '10px' : '20px',
                       height: '42px',
                       borderRadius: '12px',
                       fontWeight: 600,
@@ -5197,8 +5328,26 @@ export default function ProjectDetail() {
       </Modal>
 
       {/* Add Petty Cash Expense */}
-      <Modal isOpen={isExpenseModalOpen} onClose={() => setIsExpenseModalOpen(false)} title="Add Petty Cash Expense" footer={<Button onClick={handleAddExpense} isLoading={isSubmittingExpense} loadingText="Recording Expense...">Record Expense</Button>}>
+      <Modal
+        isOpen={isExpenseModalOpen}
+        onClose={() => { setIsExpenseModalOpen(false); setExpenseTargetDate(''); }}
+        title={expenseTargetDate ? `Add Petty Cash Expense — ${dayjs(expenseTargetDate).format('DD MMM YYYY')}` : 'Add Petty Cash Expense'}
+        footer={<Button onClick={handleAddExpense} isLoading={isSubmittingExpense} loadingText="Recording Expense...">Record Expense</Button>}
+      >
         <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {expenseTargetDate && (
+            <div style={{
+              backgroundColor: '#F0FDF4',
+              border: '1px solid #86EFAC',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              fontSize: '12px',
+              color: '#166534',
+              fontWeight: 600,
+            }}>
+              Recording past-date expense into <strong>{dayjs(expenseTargetDate).format('DD MMM YYYY')}</strong> (Admin approved window).
+            </div>
+          )}
           <div className="form-group">
             <label>Category *</label>
             <select
@@ -6693,6 +6842,20 @@ export default function ProjectDetail() {
             loadPettyCash();
             loadMaterials();
             loadPurchases();
+          }}
+        />
+      )}
+
+      {/* Edit Existing Petty Cash Expense Modal */}
+      {editingExpenseTx && (
+        <EditExpenseModal
+          isOpen={Boolean(editingExpenseTx)}
+          onClose={() => setEditingExpenseTx(null)}
+          projectId={projectId}
+          transaction={editingExpenseTx}
+          onSaved={() => {
+            loadPettyCash();
+            loadProjectData();
           }}
         />
       )}

@@ -7,7 +7,8 @@ import {
   Activity,
   Users,
   Briefcase,
-  Globe
+  Globe,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 
@@ -77,6 +78,11 @@ export default function BottomNav() {
 
       {isSuperAdmin() && (
         <>
+          <NavLink to="/admin/requests" style={linkStyle}>
+            <ShieldCheck size={20} />
+            <span>Requests</span>
+          </NavLink>
+
           <NavLink to="/admin/users" style={linkStyle}>
             <Users size={20} />
             <span>Users</span>

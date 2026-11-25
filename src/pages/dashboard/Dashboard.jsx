@@ -112,7 +112,14 @@ export default function Dashboard() {
     return <LoadingSpinner size="lg" text="Loading dashboard analytics & project metrics..." style={{ minHeight: '60vh' }} />;
   }
 
-  const { projects, financials, pendingRefillRequestsCount, pendingLocationRequestsCount, projectBreakdown = [] } = overview || {};
+  const {
+    projects,
+    financials,
+    pendingRefillRequestsCount,
+    pendingLocationRequestsCount,
+    pendingEditRequestsCount,
+    projectBreakdown = [],
+  } = overview || {};
 
   // Find active project if single project is selected
   const activeSelectedProject = selectedProjectId !== 'all'
@@ -263,6 +270,42 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Pending Past-Date Attendance / Expense Edit Requests Banner (Super Admin) */}
+      {isSuperAdmin() && pendingEditRequestsCount > 0 && (
+        <div style={{
+          backgroundColor: '#F5F3FF',
+          border: '1px solid #C4B5FD',
+          borderRadius: 'var(--radius-md)',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          color: '#4C1D95'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Calendar size={20} color="#7C3AED" style={{ flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: '14px' }}>
+                {pendingEditRequestsCount} Past-Date Attendance / Expense Edit Request(s) Pending Approval
+              </div>
+              <div style={{ fontSize: '12px' }}>
+                Site supervisors have requested 24-hour edit windows to add or update past-date records.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/requests')}
+            className="btn btn-sm"
+            style={{ backgroundColor: '#7C3AED', color: '#FFF' }}
+          >
+            Review in Admin Panel
+          </button>
+        </div>
+      )}
 
       {/* Pending Location Update Requests Banner (Super Admin) */}
       {isSuperAdmin() && pendingLocationRequestsCount > 0 && (

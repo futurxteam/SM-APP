@@ -12,6 +12,7 @@ import ProjectDetail from './pages/projects/ProjectDetail';
 import WorkerMasterPage from './pages/workers/WorkerMasterPage';
 import UsersPage from './pages/admin/UsersPage';
 import ActivityLogPage from './pages/admin/ActivityLogPage';
+import ApprovalRequestsPage from './pages/admin/ApprovalRequestsPage';
 import CareersAdminPage from './pages/admin/CareersAdminPage';
 import PortfolioAdminPage from './pages/admin/PortfolioAdminPage';
 
@@ -78,6 +79,15 @@ export default function App() {
             element={
               <AdminRoute>
                 <PortfolioAdminPage />
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="admin/requests"
+            element={
+              <AdminRoute>
+                <ApprovalRequestsPage />
               </AdminRoute>
             }
           />
