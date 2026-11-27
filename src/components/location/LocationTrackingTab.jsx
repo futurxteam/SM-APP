@@ -413,7 +413,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           🟢 ON SITE COVERED
                         </span>
                       )
-                    ) : missed ? (
+                    ) : isRecorded ? null : missed ? (
                       anotherSiteCount > 0 ? (
                         <span style={{
                           backgroundColor: '#FFFBEB',
@@ -472,6 +472,7 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           {markedEntries.map((entry, idx) => {
                             const isSupOnSite = entry.status === 'on_site';
                             const isAnotherSite = entry.status === 'another_site';
+                            const isNotAtSite = entry.status === 'not_at_site';
                             const isNearSite = entry.status === 'near_site';
                             const isOffSite = entry.status === 'off_site';
 
@@ -485,14 +486,14 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                                     ? '1.5px solid #BBF7D0'
                                     : isAnotherSite
                                     ? '1.5px solid #BFDBFE'
-                                    : isNearSite
+                                    : (isNearSite || isNotAtSite)
                                     ? '1.5px solid #FDE68A'
                                     : '1.5px solid #FECACA',
                                   backgroundColor: isSupOnSite
                                     ? '#F0FDF4'
                                     : isAnotherSite
                                     ? '#EFF6FF'
-                                    : isNearSite
+                                    : (isNearSite || isNotAtSite)
                                     ? '#FFFBEB'
                                     : '#FEF2F2',
                                 }}
@@ -526,6 +527,11 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                                       🏢 ANOTHER SITE
                                     </span>
                                   )}
+                                  {isNotAtSite && (
+                                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#B45309', backgroundColor: '#FEF3C7', padding: '2px 8px', borderRadius: '4px' }}>
+                                      📍 NOT AT SITE
+                                    </span>
+                                  )}
                                   {isNearSite && (
                                     <span style={{ fontSize: '10px', fontWeight: 700, color: '#D97706', backgroundColor: '#FEF3C7', padding: '2px 8px', borderRadius: '4px' }}>
                                       🟡 NEAR SITE
@@ -542,6 +548,10 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                                   {isAnotherSite ? (
                                     <div style={{ color: '#1E40AF', fontWeight: 600 }}>
                                       Another site: <strong>{entry.siteName}</strong> {entry.siteCode ? `[${entry.siteCode}]` : ''} {entry.timeRecorded ? `(${dayjs(entry.timeRecorded).format('hh:mm A')})` : ''}
+                                    </div>
+                                  ) : isNotAtSite ? (
+                                    <div style={{ color: '#92400E', fontWeight: 500 }}>
+                                      {entry.remarks || 'Not present at any site'} {entry.timeRecorded ? `(${dayjs(entry.timeRecorded).format('hh:mm A')})` : ''}
                                     </div>
                                   ) : (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
@@ -735,17 +745,21 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                       </td>
                       <td>{log.supervisor?.name || 'Supervisor'}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                        {log.latitude.toFixed(5)}, {log.longitude.toFixed(5)}
+                        {log.latitude != null && log.longitude != null
+                          ? `${Number(log.latitude).toFixed(5)}, ${Number(log.longitude).toFixed(5)}`
+                          : '—'}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         {log.distanceFromSiteMeters != null ? `${log.distanceFromSiteMeters} m` : 'N/A'}
                       </td>
                       <td style={{
                         fontWeight: 600,
-                        color: log.status === 'on_site' ? '#059669' : '#DC2626',
+                        color: log.status === 'on_site' ? '#059669' : (log.status === 'not_at_site' ? '#B45309' : '#DC2626'),
                         whiteSpace: 'nowrap',
                       }}>
-                        {log.deviationFormatted}
+                        {log.status === 'not_at_site'
+                          ? (log.remarks || log.deviationFormatted || 'Not present at site')
+                          : log.deviationFormatted}
                       </td>
                       <td>
                         {log.status === 'on_site' ? (
@@ -772,6 +786,18 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                           }}>
                             NEAR SITE
                           </span>
+                        ) : log.status === 'not_at_site' ? (
+                          <span style={{
+                            backgroundColor: '#FEF3C7',
+                            color: '#B45309',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            NOT AT SITE
+                          </span>
                         ) : (
                           <span style={{
                             backgroundColor: '#FEF2F2',
@@ -787,15 +813,19 @@ export default function LocationTrackingTab({ projectId, project, onProjectUpdat
                         )}
                       </td>
                       <td>
-                        <a
-                          href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn btn-sm btn-outline"
-                          style={{ padding: '3px 8px', fontSize: '12px' }}
-                        >
-                          <ExternalLink size={12} /> Map
-                        </a>
+                        {log.latitude != null && log.longitude != null ? (
+                          <a
+                            href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-sm btn-outline"
+                            style={{ padding: '3px 8px', fontSize: '12px' }}
+                          >
+                            <ExternalLink size={12} /> Map
+                          </a>
+                        ) : (
+                          <span style={{ color: '#94A3B8', fontSize: '12px' }}>—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

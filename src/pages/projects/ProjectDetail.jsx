@@ -154,8 +154,10 @@ export default function ProjectDetail() {
   const [refillRequests, setRefillRequests] = useState([]);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+  const [availablePettyCashBalances, setAvailablePettyCashBalances] = useState([]);
   const [expenseForm, setExpenseForm] = useState({
     category: 'material',
+    sourceProjectId: '',
     subDivision: 'General',
     customCategoryName: '',
     description: '',
@@ -851,10 +853,22 @@ export default function ProjectDetail() {
       if (res.data.data.pagination) {
         setLedgerPagination(res.data.data.pagination);
       }
+      loadAvailablePettyCashBalances();
     } catch (err) {
       console.error(err);
     } finally {
       setIsPettyCashLoading(false);
+    }
+  };
+
+  const loadAvailablePettyCashBalances = async () => {
+    try {
+      const res = await api.get(`/projects/${projectId}/pettycash/available-balances`, { skipCache: true });
+      if (res.data?.success) {
+        setAvailablePettyCashBalances(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load available petty cash balances', err);
     }
   };
 
@@ -924,6 +938,9 @@ export default function ProjectDetail() {
     formData.append('customCategoryName', expenseForm.customCategoryName);
     formData.append('description', expenseForm.description || (isRentalPaid && expenseForm.materialName ? `Rental paid: ${expenseForm.materialName}` : ''));
     formData.append('amount', expenseForm.amount);
+    if (expenseForm.sourceProjectId && String(expenseForm.sourceProjectId) !== String(projectId)) {
+      formData.append('sourceProjectId', expenseForm.sourceProjectId);
+    }
     if (expenseTargetDate) {
       formData.append('date', expenseTargetDate);
     }
@@ -974,6 +991,7 @@ export default function ProjectDetail() {
       setExpenseTargetDate('');
       setExpenseForm({
         category: 'material',
+        sourceProjectId: '',
         subDivision: 'General',
         customCategoryName: '',
         description: '',
@@ -3010,35 +3028,38 @@ export default function ProjectDetail() {
                     <FileSpreadsheet size={14} /> Seed Data
                   </button>
                 )}
-                {(isSuperAdmin() || isAccounts()) && (
+                {(isSuperAdmin() || isAccounts() || isSiteSupervisor()) && (
                   !(pettyCash?.hasOpeningBalance || pettyCash?.transactions?.some(t => t.type === 'opening_balance') || ledgerTransactions?.some(t => t.type === 'opening_balance')) ? (
                     <Button size="sm" variant="secondary" onClick={() => setIsOpeningModalOpen(true)}>Set Opening Balance</Button>
                   ) : (
-                    <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Refill Petty Cash</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setIsDirectRefillModalOpen(true)}>Add Petty Cash</Button>
                   )
                 )}
-                <Button size="sm" icon={Plus} onClick={() => { if (!materials) loadMaterials(); if (workersList.length === 0) loadProjectWorkers(); setExpenseTargetDate(''); setIsExpenseModalOpen(true); }}>Add Expense</Button>
                 {(() => {
                   const effectivePastDate = ledgerDate || (ledgerFilter === 'yesterday' ? dayjs().subtract(1, 'day').format('YYYY-MM-DD') : '');
-                  if (effectivePastDate && effectivePastDate < todayDateStr && (!isSiteSupervisor() || pettyCashEditAccess.canSupervisorEditDate)) {
-                    return (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={Plus}
-                        style={{ backgroundColor: '#16A34A', borderColor: '#16A34A' }}
-                        onClick={() => {
-                          if (!materials) loadMaterials();
-                          if (workersList.length === 0) loadProjectWorkers();
-                          setExpenseTargetDate(effectivePastDate);
-                          setIsExpenseModalOpen(true);
-                        }}
-                      >
-                        Add Expense ({dayjs(effectivePastDate).format('DD MMM')})
-                      </Button>
-                    );
-                  }
-                  return null;
+                  const canAddForPastDate = Boolean(
+                    effectivePastDate &&
+                    effectivePastDate < todayDateStr &&
+                    (!isSiteSupervisor() || pettyCashEditAccess.canSupervisorEditDate)
+                  );
+                  return (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={Plus}
+                      style={canAddForPastDate ? { backgroundColor: '#16A34A', borderColor: '#16A34A' } : undefined}
+                      onClick={() => {
+                        if (!materials) loadMaterials();
+                        if (workersList.length === 0) loadProjectWorkers();
+                        loadAvailablePettyCashBalances();
+                        setExpenseForm(prev => ({ ...prev, sourceProjectId: projectId }));
+                        setExpenseTargetDate(canAddForPastDate ? effectivePastDate : '');
+                        setIsExpenseModalOpen(true);
+                      }}
+                    >
+                      {canAddForPastDate ? `Add Expense (${dayjs(effectivePastDate).format('DD MMM')})` : 'Add Expense'}
+                    </Button>
+                  );
                 })()}
                 <select className="input" style={{ width: 'auto', padding: '6px 8px', fontSize: '12px' }} value={ledgerDate ? 'custom' : ledgerFilter} onChange={(e) => { const value = e.target.value; setLedgerDate(''); setLedgerFilter(value === 'custom' ? 'all' : value); setLedgerPage(1); }}>
                   <option value="all">All dates</option><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="this_month">This month</option>
@@ -3088,14 +3109,27 @@ export default function ProjectDetail() {
                             <div style={{ fontSize: '11px', color: '#64748B' }}>{dayjs(t.createdAt || t.date).format('hh:mm A')}</div>
                           </td>
                           <td>
-                            <Badge variant={t.type === 'expense' ? 'rejected' : 'approved'}>
-                              {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
+                            <Badge variant={(t.type === 'expense' || t.type === 'transfer_out') ? 'rejected' : 'approved'}>
+                              {t.type === 'expense'
+                                ? 'EXPENSE'
+                                : t.type === 'cash_refill'
+                                ? 'REFILL'
+                                : t.type === 'transfer_out'
+                                ? 'TRANSFER OUT'
+                                : t.type === 'transfer_in'
+                                ? 'TRANSFER IN'
+                                : 'OPENING'}
                             </Badge>
                           </td>
                           <td>
                             {t.category === 'custom'
                               ? t.customCategoryName
                               : (t.category === 'tools_rental' || t.category === 'rental' ? 'Rental Paid' : (t.category || '—'))}
+                            {t.sourceProjectName && t.type === 'expense' && (
+                              <div style={{ fontSize: '11px', color: '#2563EB', fontWeight: 600, marginTop: '2px' }}>
+                                Paid from: {t.sourceProjectName}
+                              </div>
+                            )}
                             {t.materialName && (t.isRentalPayment || t.category === 'tools_rental' || t.category === 'rental') && (
                               <div style={{ fontSize: '11px', color: '#6D28D9', fontWeight: 600, marginTop: '2px' }}>
                                 🏷️ {t.materialName}
@@ -3109,8 +3143,8 @@ export default function ProjectDetail() {
                             )}
                           </td>
                           <td>{t.description || '—'}</td>
-                          <td style={{ fontWeight: 600, color: t.type === 'expense' ? '#DC2626' : '#059669' }}>
-                            {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
+                          <td style={{ fontWeight: 600, color: (t.type === 'expense' || t.type === 'transfer_out') ? '#DC2626' : '#059669' }}>
+                            {(t.type === 'expense' || t.type === 'transfer_out') ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
                           </td>
                           <td>
                             {t.receiptImage ? (
@@ -3194,13 +3228,21 @@ export default function ProjectDetail() {
                         <div style={{
                           fontWeight: 700,
                           fontSize: '15px',
-                          color: t.type === 'expense' ? '#DC2626' : '#059669'
+                          color: (t.type === 'expense' || t.type === 'transfer_out') ? '#DC2626' : '#059669'
                         }}>
-                          {t.type === 'expense' ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
+                          {(t.type === 'expense' || t.type === 'transfer_out') ? `−₹${t.amount.toLocaleString('en-IN')}` : `+₹${t.amount.toLocaleString('en-IN')}`}
                         </div>
                         <div style={{ marginTop: '3px' }}>
-                          <Badge variant={t.type === 'expense' ? 'rejected' : 'approved'}>
-                            {t.type === 'expense' ? 'EXPENSE' : t.type === 'cash_refill' ? 'REFILL' : 'OPENING'}
+                          <Badge variant={(t.type === 'expense' || t.type === 'transfer_out') ? 'rejected' : 'approved'}>
+                            {t.type === 'expense'
+                              ? 'EXPENSE'
+                              : t.type === 'cash_refill'
+                              ? 'REFILL'
+                              : t.type === 'transfer_out'
+                              ? 'TRANSFER OUT'
+                              : t.type === 'transfer_in'
+                              ? 'TRANSFER IN'
+                              : 'OPENING'}
                           </Badge>
                         </div>
                       </div>
@@ -5349,6 +5391,44 @@ export default function ProjectDetail() {
               Recording past-date expense into <strong>{dayjs(expenseTargetDate).format('DD MMM YYYY')}</strong> (Admin approved window).
             </div>
           )}
+          <div className="form-group">
+            <label>Pay From Petty Cash Balance *</label>
+            <select
+              className="input"
+              value={expenseForm.sourceProjectId || projectId}
+              onChange={(e) => setExpenseForm({ ...expenseForm, sourceProjectId: e.target.value })}
+            >
+              {(availablePettyCashBalances.length > 0
+                ? availablePettyCashBalances
+                : [{
+                    _id: projectId,
+                    name: project?.name || 'Current Project',
+                    currentBalance: pettyCash?.currentBalance || 0,
+                    isClosed: Boolean(pettyCash?.isClosed),
+                    isCurrentProject: true,
+                  }]
+              ).map((p) => (
+                <option key={p._id} value={p._id} disabled={p.isClosed}>
+                  ₹{(p.currentBalance || 0).toLocaleString('en-IN')} — {p.name}
+                  {p.isCurrentProject ? ' (This Site)' : ''}
+                  {p.isClosed ? ' (Closed)' : ''}
+                </option>
+              ))}
+            </select>
+            {expenseForm.sourceProjectId && String(expenseForm.sourceProjectId) !== String(projectId) && (
+              <div style={{
+                marginTop: '6px',
+                fontSize: '12px',
+                color: '#1D4ED8',
+                backgroundColor: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                borderRadius: '8px',
+                padding: '6px 10px',
+              }}>
+                Expense will be recorded under <strong>{project?.name}</strong> and deducted from the selected site&apos;s petty cash balance.
+              </div>
+            )}
+          </div>
           <div className="form-group">
             <label>Category *</label>
             <select
